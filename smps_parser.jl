@@ -181,7 +181,3 @@ function get_STOCH(file_name)
 end
 
 
-# CREATE MODEL
-
-using StructJuMP, Gurobi
-
