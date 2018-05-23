@@ -43,6 +43,7 @@ function get_CORE(file_name)
 
     ROWS = []
     l = readline(f)
+    l = readline(f)
     while !contains(l, "COLUMNS")
         aux = split(l, " ")
         aux2 = []

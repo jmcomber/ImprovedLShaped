@@ -63,16 +63,60 @@ AUX = Dict(i[1] => i[2] for i in FIRST_STG_OBJECT)
 
 FIRST_STG_ROWS = []
 for i in CORE[1]
-    if i[1] == STG2_R
-        break
+    if i[2] != "OBJECTRW" && i[2] < STG2_R
+        push!(FIRST_STG_ROWS, i)
     end
-    push!(FIRST_STG_ROWS, i)
 end
+
+FIRST_STG_CONSTR = Dict(i[2] => Dict() for i in FIRST_STG_ROWS)
+
+FIRST_STG_RHS = Dict()
+
+# println(FIRST_STG_RHS)
+
 
 for row in FIRST_STG_ROWS
     comp, name = row
+    # println(name)
     # add constraint indicated by this row: we need RHS and all columns which include this row first
+    for col in CORE[2]
+        if name == col[2]
+            FIRST_STG_CONSTR[name][col[1]] = get(col[3])
+        elseif length(col) > 3 && col[4] == name
+            FIRST_STG_CONSTR[name][col[1]] = get(col[5])
+        end
+    end
 
+    for rhs in CORE[3]
+        if name == rhs[2] 
+            FIRST_STG_RHS[name] = get(rhs[3])
+        elseif length(rhs) > 3 && name == rhs[4]
+            FIRST_STG_RHS[name] = get(rhs[5])
+        end
+    end
+
+    # println("\n")
+    # println(row)
+    # for (key, value) in FIRST_STG_CONSTR[name]
+    #     println(key, " ", value)
+    # end
+
+    # for (key, value) in FIRST_STG_CONSTR[name]
+    #     println(key, " ", get(value))
+    # end
+
+
+    if comp == "E"
+        @constraint(m, 
+        sum(i[2] * x[i[1]] for i in FIRST_STG_CONSTR[name]) == FIRST_STG_RHS[name])
+    elseif comp == "L"
+        @constraint(m,
+        sum(i[2] * x[i[1]] for i in FIRST_STG_CONSTR[name]) <= FIRST_STG_RHS[name])
+    else
+        @constraint(m,
+        sum(i[2] * x[i[1]] for i in FIRST_STG_CONSTR[name]) >= FIRST_STG_RHS[name])
+    end
+    
 
 
 end
