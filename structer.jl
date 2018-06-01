@@ -18,6 +18,8 @@ m = StructuredModel(num_scenarios=numScens);
 
 STG2_C, STG2_R = TIME[2][1], TIME[2][2]
 
+#  w = (((z' invSigma * z) - .2 * (uno' * invSigma * z))/((uno' * invSigma * 1) * (z' * invSigma * z) - (z' * invSigma * uno)^2)) * (invSigma * uno)
+
 
 FIRST_STG_COLS = []
 for i in CORE[2]
@@ -37,9 +39,9 @@ FIRST_STG_COLS = unique(FIRST_STG_COLS)
 
 FIRST_STG_OBJECT = []
 for i in CORE[2]
-    if i[2] == "OBJECTRW"
+    if i[2] == "OBJECTRW" && i[1] < STG2_C
         push!(FIRST_STG_OBJECT, [i[1], i[3]])
-    elseif length(i) > 3 && i[4] == "OBJECTRW"
+    elseif length(i) > 3 && i[4] == "OBJECTRW" && i[1] < STG2_C
         push!(FIRST_STG_OBJECT, [i[1], i[3]])
     end
 end
@@ -55,7 +57,7 @@ for var in FIRST_STG_COLS
         push!(FIRST_STG_OBJECT, [var, 0.0])
     end
 end
-
+ 
 AUX = Dict(i[1] => i[2] for i in FIRST_STG_OBJECT)
 
 @objective(m, :Min, sum(AUX[i] * x[i] for i=FIRST_STG_COLS));
@@ -72,13 +74,10 @@ FIRST_STG_CONSTR = Dict(i[2] => Dict() for i in FIRST_STG_ROWS)
 
 FIRST_STG_RHS = Dict()
 
-# println(FIRST_STG_RHS)
-
 
 for row in FIRST_STG_ROWS
     comp, name = row
-    # println(name)
-    # add constraint indicated by this row: we need RHS and all columns which include this row first
+
     for col in CORE[2]
         if name == col[2]
             FIRST_STG_CONSTR[name][col[1]] = get(col[3])
@@ -95,16 +94,6 @@ for row in FIRST_STG_ROWS
         end
     end
 
-    # println("\n")
-    # println(row)
-    # for (key, value) in FIRST_STG_CONSTR[name]
-    #     println(key, " ", value)
-    # end
-
-    # for (key, value) in FIRST_STG_CONSTR[name]
-    #     println(key, " ", get(value))
-    # end
-
 
     if comp == "E"
         @constraint(m, 
@@ -117,10 +106,130 @@ for row in FIRST_STG_ROWS
         sum(i[2] * x[i[1]] for i in FIRST_STG_CONSTR[name]) >= FIRST_STG_RHS[name])
     end
     
-
-
 end
 
 
+println("Root scenario ready")
+
+##### EMPIEZA SEGUNDA ETAPA #####
+
+
+# [["SC", "SCEN0001", "ROOT", 0.75, "STG00002"], [CHANGES]]
+
+SEC_STG_COLS = []
+flag = false
+for i in CORE[2]
+    if flag
+        push!(SEC_STG_COLS, i[1])
+    end
+    if i[1] == STG2_C
+        flag = true
+    end
+end
+println(1)
+SEC_STG_COLS = unique(SEC_STG_COLS)
+
+SEC_STG_OBJECT = []
+for i in CORE[2]
+    if i[2] == "OBJECTRW"
+        push!(SEC_STG_OBJECT, [i[1], i[3]])
+    elseif length(i) > 3 && i[4] == "OBJECTRW"
+        push!(SEC_STG_OBJECT, [i[1], i[3]])
+    end
+end
+println(2)
+SEC_STG_OBJECT = [[get(i[1]), get(i[2])] for i in SEC_STG_OBJECT]
+
+
+AUX2 = [i[1] for i in SEC_STG_OBJECT]
+for var in SEC_STG_COLS
+    if !(var in AUX2)
+        push!(SEC_STG_OBJECT, [var, 0.0])
+    end
+end
+AUX2 = Dict(i[1] => i[2] for i in SEC_STG_OBJECT)
+println(3)
+
+SEC_STG_ROWS = [] #Van todas las restricciones en los escenarios
+for i in CORE[1]
+    if i[2] != "OBJECTRW"
+        push!(SEC_STG_ROWS, i)
+    end
+end
+
+
+SEC_STG_CONSTR = Dict(i[2] => Dict() for i in SEC_STG_ROWS)
+
+SEC_STG_RHS = Dict()
+println(4)
+
+for row in SEC_STG_ROWS
+    comp, name = row
+
+    for col in CORE[2]
+        if name == col[2]
+            SEC_STG_CONSTR[name][col[1]] = get(col[3])
+        elseif length(col) > 3 && col[4] == name
+            SEC_STG_CONSTR[name][col[1]] = get(col[5])
+        end
+    end
+
+    for rhs in CORE[3]
+        if name == rhs[2] 
+            SEC_STG_RHS[name] = get(rhs[3])
+        elseif length(rhs) > 3 && name == rhs[4]
+            SEC_STG_RHS[name] = get(rhs[5])
+        end
+    end
+end
+
+println("Before numScens")
+# println(AUX2)
+# println("\n\n")
+# println(SEC_STG_COLS)
+for s in 1:numScens
+    sb = StructuredModel(parent=m, id = s, prob = get(STOCH[s][1][4]));
+    # objective + variables
+
+    # HERE I'M NOT YET CONSIDERING BOUNDS: PLEASE DO NOT FORGET
+    @variable(sb, y[i = SEC_STG_COLS])
+
+    # OBJECTIVE
+
+    @objective(sb, :Min, AUX2[i] * y[i] for i=SEC_STG_COLS);
+
+
+    cur_RHS = copy(SEC_STG_RHS)
+
+    for change in STOCH[s][2]
+
+        # println(change)
+        # ["RHS1", "R0000021", 8.1918]
+        if contains(change[1], "RHS")
+            cur_RHS[change[2]] = change[3]
+            # Faltan casos que no sean RHS: por ahora no lo veo
+        else
+            println("No estoy haciendo el cambio porque no es RHS", change)
+        end
+        # aplicar el change, en una copia de las constraints, a la constraint correcta. Después del for, @constraint
+    end
+
+    # CONSTRAINTS
+    for row in SEC_STG_ROWS
+        comp, name = row
+        if comp == "E"
+            @constraint(sb, 
+            sum(i[2] * y[i[1]] for i in SEC_STG_CONSTR[name]) == SEC_STG_RHS[name])
+        elseif comp == "L"
+            @constraint(sb,
+            sum(i[2] * y[i[1]] for i in SEC_STG_CONSTR[name]) <= SEC_STG_RHS[name])
+        else
+            @constraint(sb,
+            sum(i[2] * y[i[1]] for i in SEC_STG_CONSTR[name]) >= SEC_STG_RHS[name])
+        end
+    end
+
+
+end
 
 
