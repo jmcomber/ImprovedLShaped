@@ -1,5 +1,15 @@
 using StructJuMP, Gurobi
 
+
+function var_getter(STG2_C, x, y, i)
+    if i >= STG2_C
+        return y[i]
+    else
+        return x[i]
+    end
+end
+
+
 include("smps_parser.jl")
 
 time = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\semi.time"
@@ -108,6 +118,21 @@ for row in FIRST_STG_ROWS
     
 end
 
+# BOUNDS
+
+for bound in CORE[4]
+    if bound[3] < STG2_C
+        if bound[1] == "UI" || bound[1] == "UP"
+            @constraint(m, x[bound[3]] <= get(bound[4]))
+        elseif bound[1] == "FX"
+            @constraint(m, x[bound[3]] == get(bound[4]))
+        elseif bound[1] == "LO"
+            @constraint(m, x[bound[3]] >= get(bound[4]))
+        end
+    end
+end
+
+
 
 println("Root scenario ready")
 
@@ -119,11 +144,11 @@ println("Root scenario ready")
 SEC_STG_COLS = []
 flag = false
 for i in CORE[2]
-    if flag
-        push!(SEC_STG_COLS, i[1])
-    end
     if i[1] == STG2_C
         flag = true
+    end
+    if flag
+        push!(SEC_STG_COLS, i[1])
     end
 end
 println(1)
@@ -131,9 +156,9 @@ SEC_STG_COLS = unique(SEC_STG_COLS)
 
 SEC_STG_OBJECT = []
 for i in CORE[2]
-    if i[2] == "OBJECTRW"
+    if i[2] == "OBJECTRW" && i[1] >= STG2_C
         push!(SEC_STG_OBJECT, [i[1], i[3]])
-    elseif length(i) > 3 && i[4] == "OBJECTRW"
+    elseif length(i) > 3 && i[4] == "OBJECTRW" && i[1] >= STG2_C
         push!(SEC_STG_OBJECT, [i[1], i[3]])
     end
 end
@@ -148,6 +173,7 @@ for var in SEC_STG_COLS
     end
 end
 AUX2 = Dict(i[1] => i[2] for i in SEC_STG_OBJECT)
+# println(sum(AUX2[i] for i=SEC_STG_COLS))
 println(3)
 
 SEC_STG_ROWS = [] #Van todas las restricciones en los escenarios
@@ -183,21 +209,26 @@ for row in SEC_STG_ROWS
     end
 end
 
+for row in SEC_STG_ROWS
+    comp, name = row
+    if !(haskey(SEC_STG_RHS, name))
+        SEC_STG_RHS[name] = 0.0
+    end
+end
+
 println("Before numScens")
 # println(AUX2)
 # println("\n\n")
 # println(SEC_STG_COLS)
 for s in 1:numScens
     sb = StructuredModel(parent=m, id = s, prob = get(STOCH[s][1][4]));
-    # objective + variables
 
     # HERE I'M NOT YET CONSIDERING BOUNDS: PLEASE DO NOT FORGET
     @variable(sb, y[i = SEC_STG_COLS])
 
     # OBJECTIVE
 
-    @objective(sb, :Min, AUX2[i] * y[i] for i=SEC_STG_COLS);
-
+    @objective(sb, :Min, sum(AUX2[i] * y[i] for i=SEC_STG_COLS))
 
     cur_RHS = copy(SEC_STG_RHS)
 
@@ -219,13 +250,25 @@ for s in 1:numScens
         comp, name = row
         if comp == "E"
             @constraint(sb, 
-            sum(i[2] * y[i[1]] for i in SEC_STG_CONSTR[name]) == SEC_STG_RHS[name])
+            sum(i[2] * var_getter(STG2_C, x, y, i[1]) for i in SEC_STG_CONSTR[name]) == SEC_STG_RHS[name])
         elseif comp == "L"
             @constraint(sb,
-            sum(i[2] * y[i[1]] for i in SEC_STG_CONSTR[name]) <= SEC_STG_RHS[name])
+            sum(i[2] * var_getter(STG2_C, x, y, i[1]) for i in SEC_STG_CONSTR[name]) <= SEC_STG_RHS[name])
         else
             @constraint(sb,
-            sum(i[2] * y[i[1]] for i in SEC_STG_CONSTR[name]) >= SEC_STG_RHS[name])
+            sum(i[2] * var_getter(STG2_C, x, y, i[1]) for i in SEC_STG_CONSTR[name]) >= SEC_STG_RHS[name])
+        end
+    end
+
+    for bound in CORE[4]
+        if bound[3] >= STG2_C
+            if bound[1] == "UI" || bound[1] == "UP"
+                @constraint(sb, y[bound[3]] <= get(bound[4]))
+            elseif bound[1] == "FX"
+                @constraint(sb, y[bound[3]] == get(bound[4]))
+            elseif bound[1] == "LO"
+                @constraint(sb, y[bound[3]] >= get(bound[4]))
+            end
         end
     end
 
@@ -233,3 +276,4 @@ for s in 1:numScens
 end
 
 
+# status, objval, soln = DLP(m, GurobiSolver())
