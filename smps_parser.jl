@@ -26,6 +26,10 @@ end
 function get_CORE(file_name)
     # f = open("C:\\Jose\\Universidad\\WorkShopUAI\\semi.core")
     f = open(file_name)
+    l = readline(f)
+    while "*" == l[1]
+        l = readline(f)
+    end
     l = split(readline(f), " ")
 
     aux = []
@@ -135,6 +139,13 @@ function get_STOCH(file_name)
 
     SCENARIOS = []
     l = readline(f)
+    l = split(l, " ")
+    perturb = "replace"
+    if length(l) == 3 && l[3] == "ADD"
+        perturb = "add"
+    elseif length(l) == 3 && l[3] == "MULTIPLY"
+        perturb = "multiply"
+    end
     l = readline(f)
     cont = 0
     while !contains(l, "ENDATA")
@@ -177,7 +188,7 @@ function get_STOCH(file_name)
     # end
     close(f)
 
-    return SCENARIOS
+    return SCENARIOS, perturb
 
 end
 

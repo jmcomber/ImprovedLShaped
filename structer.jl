@@ -19,7 +19,7 @@ stoch = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\semi2.stoch"
 TIME = get_TIME(time)
 CORE = get_CORE(core)
 STOCH = get_STOCH(stoch)
-
+STOCH, perturb = STOCH
 numScens = length(STOCH)
 
 m = StructuredModel(num_scenarios=numScens);
@@ -27,9 +27,6 @@ m = StructuredModel(num_scenarios=numScens);
 # CORE = [ROWS, COLUMNS, RHS, BOUNDS]
 
 STG2_C, STG2_R = TIME[2][1], TIME[2][2]
-
-#  w = (((z' invSigma * z) - .2 * (uno' * invSigma * z))/((uno' * invSigma * 1) * (z' * invSigma * z) - (z' * invSigma * uno)^2)) * (invSigma * uno)
-
 
 FIRST_STG_COLS = []
 for i in CORE[2]
@@ -41,8 +38,7 @@ end
 
 FIRST_STG_COLS = unique(FIRST_STG_COLS)
 
-# HERE I'M NOT YET CONSIDERING BOUNDS: PLEASE DO NOT FORGET
-@variable(m, x[i = FIRST_STG_COLS])
+@variable(m, x[i = FIRST_STG_COLS] >= 0, Int)
 
 # OBTENER FUNCIÓN OBJETIVO: PARA CADA LÍNEA DE COLUMNS VER SI SALE OBJECTRW EN i[2] o i[4] (revisar length antes) (1er caso meter i[3], en el 2do i[5])
 # Las que no aparezcan deben ser un 0, y de ahí crear el producto punto entre x y estos valores, y minimizar
@@ -57,8 +53,6 @@ for i in CORE[2]
 end
 
 FIRST_STG_OBJECT = [[get(i[1]), get(i[2])] for i in FIRST_STG_OBJECT]
-# println(FIRST_STG_OBJECT)
-
 
 
 AUX = [i[1] for i in FIRST_STG_OBJECT]
@@ -104,7 +98,6 @@ for row in FIRST_STG_ROWS
         end
     end
 
-
     if comp == "E"
         @constraint(m, 
         sum(i[2] * x[i[1]] for i in FIRST_STG_CONSTR[name]) == FIRST_STG_RHS[name])
@@ -131,8 +124,6 @@ for bound in CORE[4]
         end
     end
 end
-
-
 
 println("Root scenario ready")
 
@@ -217,14 +208,10 @@ for row in SEC_STG_ROWS
 end
 
 println("Before numScens")
-# println(AUX2)
-# println("\n\n")
-# println(SEC_STG_COLS)
 for s in 1:numScens
     sb = StructuredModel(parent=m, id = s, prob = get(STOCH[s][1][4]));
 
-    # HERE I'M NOT YET CONSIDERING BOUNDS: PLEASE DO NOT FORGET
-    @variable(sb, y[i = SEC_STG_COLS])
+    @variable(sb, y[i = SEC_STG_COLS] >= 0)
 
     # OBJECTIVE
 
@@ -232,17 +219,40 @@ for s in 1:numScens
 
     cur_RHS = copy(SEC_STG_RHS)
 
-    for change in STOCH[s][2]
-
-        # println(change)
-        # ["RHS1", "R0000021", 8.1918]
-        if contains(change[1], "RHS")
-            cur_RHS[change[2]] = change[3]
-            # Faltan casos que no sean RHS: por ahora no lo veo
-        else
-            println("No estoy haciendo el cambio porque no es RHS", change)
+    if perturb == "replace"
+        for change in STOCH[s][2]
+            # ["RHS1", "R0000021", 8.1918]
+            if contains(change[1], "RHS")
+                cur_RHS[change[2]] = change[3]
+                # Faltan casos que no sean RHS: por ahora no lo veo
+            else
+                println("No estoy haciendo el cambio porque no es RHS", change)
+            end
+            # aplicar el change, en una copia de las constraints, a la constraint correcta. Después del for, @constraint
         end
-        # aplicar el change, en una copia de las constraints, a la constraint correcta. Después del for, @constraint
+    elseif perturb == "add"
+        println("ADD")
+        for change in STOCH[s][2]
+            # ["RHS1", "R0000021", 8.1918]
+            if contains(change[1], "RHS")
+                cur_RHS[change[2]] += change[3]
+                # Faltan casos que no sean RHS: por ahora no lo veo
+            else
+                println("No estoy haciendo el cambio porque no es RHS", change)
+            end
+            # aplicar el change, en una copia de las constraints, a la constraint correcta. Después del for, @constraint
+        end
+    else
+        for change in STOCH[s][2]
+            # ["RHS1", "R0000021", 8.1918]
+            if contains(change[1], "RHS")
+                cur_RHS[change[2]] *= change[3]
+                # Faltan casos que no sean RHS: por ahora no lo veo
+            else
+                println("No estoy haciendo el cambio porque no es RHS", change)
+            end
+            # aplicar el change, en una copia de las constraints, a la constraint correcta. Después del for, @constraint
+        end
     end
 
     # CONSTRAINTS
