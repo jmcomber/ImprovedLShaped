@@ -27,8 +27,10 @@ function get_CORE(file_name)
     # f = open("C:\\Jose\\Universidad\\WorkShopUAI\\semi.core")
     f = open(file_name)
     l = readline(f)
-    while "*" == l[1]
+    # println("Fuera while, l[1] es ", l[1])
+    while '*' == l[1]
         l = readline(f)
+        # println("Dentro de while, l es ", l)
     end
     l = split(readline(f), " ")
 
@@ -47,7 +49,7 @@ function get_CORE(file_name)
 
     ROWS = []
     l = readline(f)
-    l = readline(f)
+    # l = readline(f)
     while !contains(l, "COLUMNS")
         aux = split(l, " ")
         aux2 = []
@@ -68,6 +70,10 @@ function get_CORE(file_name)
     COLUMNS = []
     l = readline(f)
     while !contains(l, "RHS")
+        # if (contains(l, "MARKER"))
+        #     l = readline(f)
+        #     continue
+        # end
         aux = split(l, " ")
         aux2 = []
         for elem in aux
