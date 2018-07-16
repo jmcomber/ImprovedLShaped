@@ -6,6 +6,8 @@ using StochasticPrograms, Gurobi
 #     d::Vector{Float64}
 #     q::Vector{Float64}
 #     a:: Array{Float64,2}
+#     comps::Array{String, 1}
+#     name::String
 # end
 
 function get_variable(name, CONTS_IDX, INTS_IDX, BINS_IDX, conts, ints, bins, scen)
@@ -22,9 +24,13 @@ StochasticPrograms.probability(s::Stoch_Scenario) = s.π
 
 include("smps_parser.jl")
 
-time = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape-3-3_3-3-2_1.tim"
-core = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape-3-3_3-3-2_1.mps"
-stoch = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape-3-3_3-3-2_1.sto"
+# time = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape-3-3_3-3-2_1.tim"
+# core = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape-3-3_3-3-2_1.mps"
+# stoch = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape-3-3_3-3-2_1.sto"
+
+time = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_5_25_50.tim"
+core = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_5_25_50.cor"
+stoch = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_5_25_50.sto"
 
 TIME = get_TIME(time)
 
@@ -221,15 +227,16 @@ AUX2 = Dict((i[1], STOCH[s][1][2]) => i[2] for i in SEC_STG_OBJECT for s=1:numSc
 println(3)
 
 SEC_STG_ROWS = [] #Van todas las restricciones en los escenarios
-flag1 = 0
+flag = 0
 for i in CORE[1]
     if i[2] == STG2_R
         flag = 1
     end
-    if i[2] != "OBJECTRW" && flag != 0
+    if i[1] != "N" && flag != 0
         push!(SEC_STG_ROWS, i)
     end
 end
+
 
 
 SEC_STG_CONSTR = Dict(i[2] => Dict() for i in SEC_STG_ROWS)
@@ -265,6 +272,21 @@ for row in SEC_STG_ROWS
     end
 end
 
+
+for row in SEC_STG_ROWS
+    for col in FIRST_STG_COLS
+        if !haskey(SEC_STG_CONSTR[row[2]], col[1])
+            SEC_STG_CONSTR[row[2]][col[1]] = 0.0
+        end
+    end
+    for col in SEC_STG_COLS
+        if !haskey(SEC_STG_CONSTR[row[2]], col[1])
+            SEC_STG_CONSTR[row[2]][col[1]] = 0.0
+        end
+    end
+end
+
+
 SCENS = []
 
 
@@ -283,6 +305,7 @@ for s in 1:numScens
     copy_AUX2 = deepcopy(AUX2)
     # println(copy_AUX2)
     copy_SEC_STG_CONSTR = deepcopy(SEC_STG_CONSTR)
+    
 
     # println("Escenario es ", STOCH[s][1][2])
     for change in STOCH[s][2]
@@ -290,21 +313,35 @@ for s in 1:numScens
         # println("change: ", change)
         # println("copy_AUX2: ", copy_AUX2)
         if contains(change[2], "RHS")
-            copy_RHS[change[2]] = get(change[3])
+            copy_RHS[change[1]] = get(change[3])
         elseif contains(change[2], "obj")
             # println(change[1], " ", STOCH[s][1][2])
             # println((change[1], STOCH[s][1][2]))
             copy_AUX2[(change[1], STOCH[s][1][2])] = get(change[3])
+        elseif contains(change[1], "RHS")
+            copy_RHS[change[2]] = get(change[3])
+        elseif contains(change[1], "obj")
+            copy_AUX2[(change[2], STOCH[s][1][2])] = get(change[3])
         else
             println("Change not made: ", change)
         end
     end
 
+    # println(SEC_STG_CONSTR)
+
+    # none = [[println(name[2], " ", col[1], " ", col[2]) for col in vcat(FIRST_STG_COLS, SEC_STG_COLS)] for name in SEC_STG_ROWS]
+
     d = [copy_RHS[name[2]] for name in SEC_STG_ROWS]
     q = [copy_AUX2[(name[1], STOCH[s][1][2])] for name in SEC_STG_COLS]
-    a = [[col[2] for col in copy_SEC_STG_CONSTR[name[2]]] for name in SEC_STG_ROWS]
-    a = hcat(a...)
-    s = Stoch_Scenario(get(STOCH[s][1][4]), d, q, a)
+    # a = [[col[2] for col in copy_SEC_STG_CONSTR[name[2]]] for name in SEC_STG_ROWS]
+    # println(SEC_STG_ROWS)
+    a = [[copy_SEC_STG_CONSTR[name[2]][col[1]] for col in vcat(FIRST_STG_COLS, SEC_STG_COLS)] for name in SEC_STG_ROWS]
+    # println(size(a))
+    a = hcat(a...)'
+    # println(size(a))
+    comps = [row[1] for row in SEC_STG_ROWS]
+    println(STOCH[s][1])
+    s = Stoch_Scenario(get(STOCH[s][1][4]), d, q, a, comps, STOCH[s][1][2])
     push!(SCENS, s)
 end
 # println(SCENS)
@@ -374,7 +411,7 @@ end
         end
     end
     
-    println(model)
+    # println(model)
 
     
     just_names = [i[1] for i in FIRST_STG_COLS]
@@ -422,25 +459,113 @@ end
 #     println(STOCH[s][1])
 # end
 
+non_neg2 = Dict((i[1], STOCH[s][1][2]) => true for i=SEC_STG_COLS for s=1:numScens)
+
+
 @second_stage sp = begin
 
     @decision conts ints bins
     s = scenario
-    # @variable(model, 0 <= y₁ <= s.d[1])
-    @variable(model, sec_conts[name=SEC_CONTS_IDX, scen=[STOCH[sc][1][2] for sc = 1:numScens]])
-    @variable(model, sec_ints[name=SEC_INTS_IDX, scen=[STOCH[sc][1][2] for sc = 1:numScens]], category=:Int)
-    @variable(model, sec_bins[name=SEC_BINS_IDX, scen=[STOCH[sc][1][2] for sc = 1:numScens]], category=:Bin)
 
-    println(AUX2)
-    @objective(model, Min, sum(AUX2[(i[1], STOCH[s][1][2])] * get_variable(i[1], SEC_CONTS_IDX, SEC_INTS_IDX, SEC_BINS_IDX, sec_conts, sec_ints, sec_bins, STOCH[sc][1][2]) for i=SEC_STG_COLS for sc=1:numScens))
+    # println(s.comps)
 
-    # @objective(model, Min, s.q[1]*y₁ + s.q[2]*y₂)
-    # @constraint(model, 8*y₁ + 5*y₂ <= 80*x₂)
+    @variable(model, sec_conts[name=SEC_CONTS_IDX])
+    @variable(model, sec_ints[name=SEC_INTS_IDX], category=:Int)
+    @variable(model, sec_bins[name=SEC_BINS_IDX], category=:Bin)
 
+    # println(SEC_INTS_IDX)
+    # println(sec_ints)
+
+    # println("Scenario is ", s.name)
+    @objective(model, Min, sum(s.q[i] * sec_conts[SEC_STG_COLS[i][1]] for i=1:length(SEC_STG_COLS) if SEC_STG_COLS[i][1] in SEC_CONTS_IDX) + 
+    sum(s.q[i] * sec_ints[SEC_STG_COLS[i][1]] for i=1:length(SEC_STG_COLS) if SEC_STG_COLS[i][1] in SEC_INTS_IDX) + 
+    sum(s.q[i] * sec_bins[SEC_STG_COLS[i][1]] for i=1:length(SEC_STG_COLS) if SEC_STG_COLS[i][1] in SEC_BINS_IDX))
+
+
+    for x in 1:length(SEC_STG_ROWS)
+        # println(length(s.a))
+        # println(length(FIRST_STG_COLS), " ", length(SEC_STG_COLS), " ", length(SEC_STG_ROWS))
+        if s.comps[x] == "E"
+            @constraint(model, sum(s.a[x, length(FIRST_STG_COLS) + y] * sec_conts[SEC_STG_COLS[y]] for y in 1:length(SEC_STG_COLS) if SEC_STG_COLS[y][1] in SEC_CONTS_IDX) + 
+            sum(s.a[x, length(FIRST_STG_COLS) + y] * sec_ints[SEC_STG_COLS[y][1]] for y in 1:length(SEC_STG_COLS) if SEC_STG_COLS[y][1] in SEC_INTS_IDX) + 
+            sum(s.a[x, length(FIRST_STG_COLS) + y] * sec_bins[SEC_STG_COLS[y][1]] for y in 1:length(SEC_STG_COLS) if SEC_STG_COLS[y][1] in SEC_BINS_IDX) + 
+            sum(s.a[x, y] * conts[FIRST_STG_COLS[y][1], "MASTER"] for y in 1:length(FIRST_STG_COLS) if FIRST_STG_COLS[y][1] in CONTS_IDX) +
+            sum(s.a[x, y] * ints[FIRST_STG_COLS[y][1], "MASTER"] for y in 1:length(FIRST_STG_COLS) if FIRST_STG_COLS[y][1] in INTS_IDX) +
+            sum(s.a[x, y] * bins[FIRST_STG_COLS[y][1], "MASTER"] for y in 1:length(FIRST_STG_COLS) if FIRST_STG_COLS[y][1] in BINS_IDX) == s.d[x])
+        elseif s.comps[x] == "G"
+            @constraint(model, sum(s.a[x, length(FIRST_STG_COLS) + y] * sec_conts[SEC_STG_COLS[y]] for y in 1:length(SEC_STG_COLS) if SEC_STG_COLS[y][1] in SEC_CONTS_IDX) + 
+            sum(s.a[x, length(FIRST_STG_COLS) + y] * sec_ints[SEC_STG_COLS[y][1]] for y in 1:length(SEC_STG_COLS) if SEC_STG_COLS[y][1] in SEC_INTS_IDX) + 
+            sum(s.a[x, length(FIRST_STG_COLS) + y] * sec_bins[SEC_STG_COLS[y][1]] for y in 1:length(SEC_STG_COLS) if SEC_STG_COLS[y][1] in SEC_BINS_IDX) +
+            sum(s.a[x, y] * conts[FIRST_STG_COLS[y][1], "MASTER"] for y in 1:length(FIRST_STG_COLS) if FIRST_STG_COLS[y][1] in CONTS_IDX) +
+            sum(s.a[x, y] * ints[FIRST_STG_COLS[y][1], "MASTER"] for y in 1:length(FIRST_STG_COLS) if FIRST_STG_COLS[y][1] in INTS_IDX) +
+            sum(s.a[x, y] * bins[FIRST_STG_COLS[y][1], "MASTER"] for y in 1:length(FIRST_STG_COLS) if FIRST_STG_COLS[y][1] in BINS_IDX) >= s.d[x])
+        else
+            @constraint(model, sum(s.a[x, y] * sec_conts[SEC_STG_COLS[y]] for y in 1:length(SEC_STG_COLS) if SEC_STG_COLS[y][1] in SEC_CONTS_IDX) + 
+            sum(s.a[x, length(FIRST_STG_COLS) + y] * sec_ints[SEC_STG_COLS[y][1]] for y in 1:length(SEC_STG_COLS) if SEC_STG_COLS[y][1] in SEC_INTS_IDX) + 
+            sum(s.a[x, length(FIRST_STG_COLS) + y] * sec_bins[SEC_STG_COLS[y][1]] for y in 1:length(SEC_STG_COLS) if SEC_STG_COLS[y][1] in SEC_BINS_IDX) +
+            sum(s.a[x, y] * conts[FIRST_STG_COLS[y][1], "MASTER"] for y in 1:length(FIRST_STG_COLS) if FIRST_STG_COLS[y][1] in CONTS_IDX) +
+            sum(s.a[x, y] * ints[FIRST_STG_COLS[y][1], "MASTER"] for y in 1:length(FIRST_STG_COLS) if FIRST_STG_COLS[y][1] in INTS_IDX) +
+            sum(s.a[x, y] * bins[FIRST_STG_COLS[y][1], "MASTER"] for y in 1:length(FIRST_STG_COLS) if FIRST_STG_COLS[y][1] in BINS_IDX) <= s.d[x])
+        end
+    end
+
+    just_names2 = [i[1] for i in SEC_STG_COLS]
+
+    for bound in CORE[4]
+        if bound[3] in just_names2
+            if bound[1] == "UP" || bound[1] == "UI"
+                if bound[3] in SEC_CONTS_IDX
+                    @constraint(model, sec_conts[bound[3]] <= get(bound[4]))
+                elseif bound[3] in SEC_INTS_IDX
+                    @constraint(model, sec_ints[bound[3]] <= get(bound[4]))
+                else
+                    @constraint(model, sec_bins[bound[3]] <= get(bound[4]))
+                end
+            elseif bound[1] == "FX"
+                if bound[3] in SEC_CONTS_IDX
+                    @constraint(model, sec_conts[bound[3]] == get(bound[4]))
+                elseif bound[3] in SEC_INTS_IDX
+                    @constraint(model, sec_ints[bound[3]] == get(bound[4]))
+                else
+                    @constraint(model, sec_bins[bound[3]] == get(bound[4]))
+                end
+            elseif bound[1] == "LO"
+                if bound[3] in SEC_CONTS_IDX
+                    @constraint(model, sec_conts[bound[3]] >= get(bound[4]))
+                elseif bound[3] in SEC_INTS_IDX
+                    @constraint(model, sec_ints[bound[3]] >= get(bound[4]))
+                else
+                    @constraint(model, sec_bins[bound[3]] >= get(bound[4]))
+                end
+                non_neg2[(bound[3], s.name)] = false
+            elseif bound[1] == "FR"
+                non_neg2[(bound[3], s.name)] = false
+            end
+        end
+    end
+
+    for (key, val) in non_neg2
+        if val
+            # @constraint(model, get_variable(key, CONTS_IDX, INTS_IDX, BINS_IDX, conts, ints, bins, "MASTER") >= 0)
+            if key[1] in SEC_CONTS_IDX
+                @constraint(model, sec_conts[key[1]] >= 0)
+            elseif key[1] in SEC_INTS_IDX
+                @constraint(model, sec_ints[key[1]] >= 0)
+            else
+                @constraint(model, sec_bins[key[1]] >= 0)
+            end
+        end
+    end    
+
+    
 end
 
+# println(sp)
 
 
+# solve(sp, solver=LShapedSolver(:ls, GurobiSolver()))
+
+solve(sp, solver=GurobiSolver())
 
 
 
