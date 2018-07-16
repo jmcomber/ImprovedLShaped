@@ -155,7 +155,7 @@ function get_STOCH(file_name)
     l = readline(f)
     cont = 0
     while !contains(l, "ENDATA")
-        l = split(l, " ")
+        l = split(l, r"\t| ")
         CUR_SCEN = []
         
         for elem in l
