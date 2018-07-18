@@ -1,1 +1,4 @@
 *.txt
+.vscode
+stoch_programs_example.jl
+structs_structer.jl

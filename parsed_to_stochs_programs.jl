@@ -2,8 +2,6 @@ using StochasticPrograms, Gurobi, Clp, LShapedSolvers
 
 
 
-# (outRead, outWrite) = redirect_stdout()
-
 # struct Stoch_Scenario <: AbstractScenarioData
 #     # π probability, d right side, q obj, a coeffs, comps either "E"(quality), "G"(reater or equal) or "L"(ess or equal)
 #     π::Float64
@@ -461,7 +459,10 @@ end
 
 # solve(sp, solver=GurobiSolver())
 
-
+# multiple cuts :ls
+# regularized decomposition :rd
+# trust region :tr
+# level sets :lv
 solve(sp, solver=LShapedSolver(:ls, GurobiSolver()))
 
 
@@ -476,4 +477,4 @@ solve(sp, solver=LShapedSolver(:ls, GurobiSolver()))
 # end
 
 
-
+println("\nOptimal value: ", optimal_value(sp))
