@@ -31,9 +31,9 @@ StochasticPrograms.probability(s::Stoch_Scenario) = s.π
 
 include("smps_parser.jl")
 
-# time = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape-3-3_3-3-2_1.tim"
-# core = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape-3-3_3-3-2_1.mps"
-# stoch = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape-3-3_3-3-2_1.sto"
+# time = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape\\shape-3-3_3-3-2_1.tim"
+# core = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape\\shape-3-3_3-3-2_1.mps"
+# stoch = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape\\shape-3-3_3-3-2_1.sto"
 
 time = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_5_25_50.tim"
 core = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_5_25_50.cor"
