@@ -1,4 +1,4 @@
 *.txt
-.vscode
+.vscode/
 stoch_programs_example.jl
 structs_structer.jl
