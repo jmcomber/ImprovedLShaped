@@ -1,5 +1,6 @@
-using StochasticPrograms, Gurobi, Clp, LShapedSolvers
+using StochasticPrograms, Gurobi, LShapedSolvers
 
+# Backup en LShapedSolversCopy
 
 
 struct Stoch_Scenario <: AbstractScenarioData
@@ -324,22 +325,21 @@ for (name, type_var) in FIRST_STG_COLS
     end
 end
 
-
+println("BINS_IDX: ", BINS_IDX)
 println("[INITIATING PREPROCESSING]")
 
 # tenemos BINS_IDX: ver que eso sea igual a linking_vars
 LINKING_VARS = []
 
 for (comp, row) in SEC_STG_ROWS
-    added = false
     for (name, var_type) in FIRST_STG_COLS
-        if !added && haskey(SEC_STG_CONSTR[row], name)
+        if haskey(SEC_STG_CONSTR[row], name) && !(name in LINKING_VARS)
             push!(LINKING_VARS, name)
-            added = true
         end
     end
 end
 
+# LINKING_VARS = unique(LINKING_VARS)
 println("LINKING VARS: ", LINKING_VARS)
 
 # for link_var in LINKING_VARS

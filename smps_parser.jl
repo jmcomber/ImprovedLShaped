@@ -1,7 +1,6 @@
 
 
 function get_TIME(file_name)
-    # f = open("C:\\Jose\\Universidad\\WorkShopUAI\\semi.time")
     f = open(file_name) # En verdad no te van a dar full path: obtenerlo
     NAME = split(readline(f), " ")[end]
 
@@ -24,13 +23,10 @@ function get_TIME(file_name)
 end
 
 function get_CORE(file_name)
-    # f = open("C:\\Jose\\Universidad\\WorkShopUAI\\semi.core")
     f = open(file_name)
     l = readline(f)
-    # println("Fuera while, l[1] es ", l[1])
     while '*' == l[1]
         l = readline(f)
-        # println("Dentro de while, l es ", l)
     end
     l = split(readline(f), " ")
 
@@ -49,7 +45,6 @@ function get_CORE(file_name)
 
     ROWS = []
     l = readline(f)
-    # l = readline(f)
     while !contains(l, "COLUMNS")
         aux = split(l, " ")
         aux2 = []
@@ -130,7 +125,6 @@ function get_CORE(file_name)
 end
 
 function get_STOCH(file_name)
-    # f = open("C:\\Jose\\Universidad\\WorkShopUAI\\semi2.stoch")
     f = open(file_name)
     l = readline(f)
     while !contains(l, "STOCH")
@@ -189,9 +183,6 @@ function get_STOCH(file_name)
         push!(SCENARIOS, [CUR_SCEN, CUR_DATA])
     end
 
-    # for scen in SCENARIOS
-    #     println(scen)
-    # end
     close(f)
 
     return SCENARIOS, perturb
