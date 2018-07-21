@@ -2,15 +2,15 @@ using StochasticPrograms, Gurobi, Clp, LShapedSolvers
 
 
 
-# struct Stoch_Scenario <: AbstractScenarioData
-#     # π probability, d right side, q obj, a coeffs, comps either "E"(quality), "G"(reater or equal) or "L"(ess or equal)
-#     π::Float64
-#     d::Vector{Float64}
-#     q::Vector{Float64}
-#     a:: Array{Float64,2}
-#     comps::Array{String, 1}
-#     name::String
-# end
+struct Stoch_Scenario <: AbstractScenarioData
+    # π probability, d right side, q obj, a coeffs, comps either "E"(quality), "G"(reater or equal) or "L"(ess or equal)
+    π::Float64
+    d::Vector{Float64}
+    q::Vector{Float64}
+    a:: Array{Float64,2}
+    comps::Array{String, 1}
+    name::String
+end
 
 function get_variable(name, CONTS_IDX, INTS_IDX, BINS_IDX, conts, ints, bins)
     if name in CONTS_IDX
@@ -238,6 +238,7 @@ for row in SEC_STG_ROWS
     end
 end
 
+println(5)
 
 SCENS = []
 
@@ -272,7 +273,7 @@ for s in 1:numScens
     push!(SCENS, s)
 end
 
-
+println(6)
 sp = StochasticProgram([s for s in SCENS])
 
 
@@ -283,17 +284,78 @@ CONTS_IDX = []
 INTS_IDX = []
 BINS_IDX = []
 
+
+# for bound in CORE[4]
+#     if bound[3] in just_names
+#         if bound[1] == "UP" || bound[1] == "UI"
+#             @constraint(model, get_variable(bound[3], CONTS_IDX, INTS_IDX, BINS_IDX, conts, ints, bins) <= get(bound[4]))
+#         elseif bound[1] == "FX"
+#             @constraint(model, get_variable(bound[3], CONTS_IDX, INTS_IDX, BINS_IDX, conts, ints, bins) == get(bound[4]))
+#         elseif bound[1] == "LO"
+#             @constraint(model, get_variable(bound[3], CONTS_IDX, INTS_IDX, BINS_IDX, conts, ints, bins) >= get(bound[4]))
+#             non_neg[bound[3]] = false
+#         elseif bound[1] == "FR"
+#             non_neg[bound[3]] = false
+#         end
+#     end
+# end
+
+
 for (name, type_var) in FIRST_STG_COLS
     if type_var == "cont"
         push!(CONTS_IDX, name)
     elseif type_var == "int"
-        push!(INTS_IDX, name)
+        # revisar si tiene UP o UI 1. Si no, INTS_IDX. Si es que sí, BINS_IDX.
+        added = false
+        for bound in CORE[4]
+            if bound[3] == name && !added
+                # println(bound)
+                if (bound[1] == "UP" || bound[1] == "UI") && (get(bound[4]) == 1 || get(bound[4]) == 1.0)
+                    push!(BINS_IDX, name)
+                    added = true
+                end
+            end
+        end
+        if !added
+            push!(INTS_IDX, name)
+        end
     else
         push!(BINS_IDX, name)
     end
 end
 
 
+println("[INITIATING PREPROCESSING]")
+
+# tenemos BINS_IDX: ver que eso sea igual a linking_vars
+LINKING_VARS = []
+
+for (comp, row) in SEC_STG_ROWS
+    added = false
+    for (name, var_type) in FIRST_STG_COLS
+        if !added && haskey(SEC_STG_CONSTR[row], name)
+            push!(LINKING_VARS, name)
+            added = true
+        end
+    end
+end
+
+println("LINKING VARS: ", LINKING_VARS)
+
+# for link_var in LINKING_VARS
+#     if !(link_var in BINS_IDX)
+#         throw("Problem not suited for Integer L-Shaped Method: linking variables are not all binary")
+#     end
+# end
+
+# Fixed value for now
+L = -1000000
+
+println("[PREPROCESSING READY, L set to ", L, "]")
+
+
+
+println(7)
 
 @first_stage sp = begin
 
@@ -456,6 +518,7 @@ non_neg2 = Dict((i[1], STOCH[s][1][2]) => true for i=SEC_STG_COLS for s=1:numSce
 end
 
 # println(sp)
+println(8)
 
 # solve(sp, solver=GurobiSolver())
 
@@ -463,18 +526,15 @@ end
 # regularized decomposition :rd
 # trust region :tr
 # level sets :lv
-solve(sp, solver=LShapedSolver(:ls, GurobiSolver()))
 
-
-# close(outWrite)
- 
-# data = readavailable(outRead)
- 
-# close(outRead)
-
-# open("C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\log.txt", "w") do f
-#     write(f, data)
-# end
+# println(sp)
+solve(sp, solver=LShapedSolver(:ls, GurobiSolver(OutputFlag=0)))
 
 
 println("\nOptimal value: ", optimal_value(sp))
+
+for i in 1:sp.numCols
+    if sp.colVal[i] != 0.0
+        println(i, " ", sp.colNames[i], ": ", sp.colVal[i])
+    end
+end
