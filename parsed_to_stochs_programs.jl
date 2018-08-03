@@ -3,6 +3,9 @@ using StochasticPrograms, Gurobi, LShapedSolvers
 # Backup en LShapedSolversCopy
 
 
+
+
+
 struct Stoch_Scenario <: AbstractScenarioData
     # π probability, d right side, q obj, a coeffs, comps either "E"(quality), "G"(reater or equal) or "L"(ess or equal)
     π::Float64
@@ -36,9 +39,9 @@ include("smps_parser.jl")
 # core = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape\\shape-3-3_3-3-2_1.mps"
 # stoch = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape\\shape-3-3_3-3-2_1.sto"
 
-time = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_5_25_50.tim"
-core = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_5_25_50.cor"
-stoch = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_5_25_50.sto"
+time = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_5_25_100.tim"
+core = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_5_25_100.cor"
+stoch = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_5_25_100.sto"
 
 TIME = get_TIME(time)
 
@@ -278,28 +281,11 @@ println(6)
 sp = StochasticProgram([s for s in SCENS])
 
 
-x = Dict()
 non_neg = Dict(i[1] => true for i=FIRST_STG_COLS)
 
 CONTS_IDX = []
 INTS_IDX = []
 BINS_IDX = []
-
-
-# for bound in CORE[4]
-#     if bound[3] in just_names
-#         if bound[1] == "UP" || bound[1] == "UI"
-#             @constraint(model, get_variable(bound[3], CONTS_IDX, INTS_IDX, BINS_IDX, conts, ints, bins) <= get(bound[4]))
-#         elseif bound[1] == "FX"
-#             @constraint(model, get_variable(bound[3], CONTS_IDX, INTS_IDX, BINS_IDX, conts, ints, bins) == get(bound[4]))
-#         elseif bound[1] == "LO"
-#             @constraint(model, get_variable(bound[3], CONTS_IDX, INTS_IDX, BINS_IDX, conts, ints, bins) >= get(bound[4]))
-#             non_neg[bound[3]] = false
-#         elseif bound[1] == "FR"
-#             non_neg[bound[3]] = false
-#         end
-#     end
-# end
 
 
 for (name, type_var) in FIRST_STG_COLS
@@ -310,7 +296,6 @@ for (name, type_var) in FIRST_STG_COLS
         added = false
         for bound in CORE[4]
             if bound[3] == name && !added
-                # println(bound)
                 if (bound[1] == "UP" || bound[1] == "UI") && (get(bound[4]) == 1 || get(bound[4]) == 1.0)
                     push!(BINS_IDX, name)
                     added = true
@@ -328,31 +313,26 @@ end
 println("BINS_IDX: ", BINS_IDX)
 println("[INITIATING PREPROCESSING]")
 
-# tenemos BINS_IDX: ver que eso sea igual a linking_vars
+# ver que linking_vars \subseteq de BINS_IDX
 LINKING_VARS = []
 
 for (comp, row) in SEC_STG_ROWS
     for (name, var_type) in FIRST_STG_COLS
-        if haskey(SEC_STG_CONSTR[row], name) && !(name in LINKING_VARS)
+        if haskey(SEC_STG_CONSTR[row], name) && SEC_STG_CONSTR[row][name] != 0 && !(name in LINKING_VARS)
             push!(LINKING_VARS, name)
         end
     end
 end
 
-# LINKING_VARS = unique(LINKING_VARS)
 println("LINKING VARS: ", LINKING_VARS)
 
-# for link_var in LINKING_VARS
-#     if !(link_var in BINS_IDX)
-#         throw("Problem not suited for Integer L-Shaped Method: linking variables are not all binary")
-#     end
-# end
+for link_var in LINKING_VARS
+    if !(link_var in BINS_IDX)
+        throw("Problem not suited for Integer L-Shaped Method: linking variables are not all binary")
+    end
+end
 
-# Fixed value for now
-L = -1000000
-
-println("[PREPROCESSING READY, L set to ", L, "]")
-
+println("[PREPROCESSING READY]")
 
 
 println(7)
@@ -360,10 +340,10 @@ println(7)
 @first_stage sp = begin
 
     @variable(model, conts[name=CONTS_IDX])
-    # @variable(model, ints[name=INTS_IDX], category=:Int)
-    # @variable(model, bins[name=BINS_IDX], category=:Bin)
-    @variable(model, ints[name=INTS_IDX])
-    @variable(model, bins[name=BINS_IDX])
+    @variable(model, ints[name=INTS_IDX], category=:Int)
+    @variable(model, bins[name=BINS_IDX], category=:Bin)
+    # @variable(model, ints[name=INTS_IDX])
+    # @variable(model, 0 <= bins[name=BINS_IDX] <= 1)
 
     @objective(model, Min, sum(AUX[i[1]] * get_variable(i[1], CONTS_IDX, INTS_IDX, BINS_IDX, conts, ints, bins) for i=FIRST_STG_COLS))
     
@@ -381,7 +361,7 @@ println(7)
     just_names = [i[1] for i in FIRST_STG_COLS]
 
     for bound in CORE[4]
-        if bound[3] in just_names
+        if bound[3] in just_names && !(bound[3] in BINS_IDX)
             if bound[1] == "UP" || bound[1] == "UI"
                 @constraint(model, get_variable(bound[3], CONTS_IDX, INTS_IDX, BINS_IDX, conts, ints, bins) <= get(bound[4]))
             elseif bound[1] == "FX"
@@ -396,12 +376,11 @@ println(7)
     end
 
     for (key, val) in non_neg
-        if val
+        if val && !(key in BINS_IDX)
             @constraint(model, get_variable(key, CONTS_IDX, INTS_IDX, BINS_IDX, conts, ints, bins) >= 0)
         end
     end
 
-    # println(model)
 end
 
 
@@ -413,7 +392,19 @@ for (name, type_var) in SEC_STG_COLS
     if type_var == "cont"
         push!(SEC_CONTS_IDX, name)
     elseif type_var == "int"
-        push!(SEC_INTS_IDX, name)
+        # revisar si tiene UP o UI 1. Si no, INTS_IDX. Si es que sí, BINS_IDX.
+        added = false
+        for bound in CORE[4]
+            if bound[3] == name && !added
+                if (bound[1] == "UP" || bound[1] == "UI") && (get(bound[4]) == 1 || get(bound[4]) == 1.0)
+                    push!(SEC_BINS_IDX, name)
+                    added = true
+                end
+            end
+        end
+        if !added
+            push!(SEC_INTS_IDX, name)
+        end
     else
         push!(SEC_BINS_IDX, name)
     end
@@ -428,18 +419,15 @@ non_neg2 = Dict((i[1], STOCH[s][1][2]) => true for i=SEC_STG_COLS for s=1:numSce
     @decision conts ints bins
     s = scenario
 
-
     @variable(model, sec_conts[name=SEC_CONTS_IDX])
-    # @variable(model, sec_ints[name=SEC_INTS_IDX], category=:Int)
-    # @variable(model, sec_bins[name=SEC_BINS_IDX], category=:Bin)
-    @variable(model, sec_ints[name=SEC_INTS_IDX])
-    @variable(model, sec_bins[name=SEC_BINS_IDX])
-
+    @variable(model, sec_ints[name=SEC_INTS_IDX], category=:Int)
+    @variable(model, sec_bins[name=SEC_BINS_IDX], category=:Bin)
+    # @variable(model, sec_ints[name=SEC_INTS_IDX])
+    # @variable(model, 0 <= sec_bins[name=SEC_BINS_IDX] <= 1)
 
     @objective(model, Min, sum(s.q[i] * sec_conts[SEC_STG_COLS[i][1]] for i=1:length(SEC_STG_COLS) if SEC_STG_COLS[i][1] in SEC_CONTS_IDX) + 
     sum(s.q[i] * sec_ints[SEC_STG_COLS[i][1]] for i=1:length(SEC_STG_COLS) if SEC_STG_COLS[i][1] in SEC_INTS_IDX) + 
     sum(s.q[i] * sec_bins[SEC_STG_COLS[i][1]] for i=1:length(SEC_STG_COLS) if SEC_STG_COLS[i][1] in SEC_BINS_IDX))
-
 
     for x in 1:length(SEC_STG_ROWS)
 
@@ -476,8 +464,8 @@ non_neg2 = Dict((i[1], STOCH[s][1][2]) => true for i=SEC_STG_COLS for s=1:numSce
                     @constraint(model, sec_conts[bound[3]] <= get(bound[4]))
                 elseif bound[3] in SEC_INTS_IDX
                     @constraint(model, sec_ints[bound[3]] <= get(bound[4]))
-                else
-                    @constraint(model, sec_bins[bound[3]] <= get(bound[4]))
+                # else
+                #     @constraint(model, sec_bins[bound[3]] <= get(bound[4]))
                 end
             elseif bound[1] == "FX"
                 if bound[3] in SEC_CONTS_IDX
@@ -492,8 +480,8 @@ non_neg2 = Dict((i[1], STOCH[s][1][2]) => true for i=SEC_STG_COLS for s=1:numSce
                     @constraint(model, sec_conts[bound[3]] >= get(bound[4]))
                 elseif bound[3] in SEC_INTS_IDX
                     @constraint(model, sec_ints[bound[3]] >= get(bound[4]))
-                else
-                    @constraint(model, sec_bins[bound[3]] >= get(bound[4]))
+                # else
+                #     @constraint(model, sec_bins[bound[3]] >= get(bound[4]))
                 end
                 non_neg2[(bound[3], s.name)] = false
             elseif bound[1] == "FR"
@@ -508,28 +496,22 @@ non_neg2 = Dict((i[1], STOCH[s][1][2]) => true for i=SEC_STG_COLS for s=1:numSce
                 @constraint(model, sec_conts[key[1]] >= 0)
             elseif key[1] in SEC_INTS_IDX
                 @constraint(model, sec_ints[key[1]] >= 0)
-            else
-                @constraint(model, sec_bins[key[1]] >= 0)
+            # else
+                # @constraint(model, sec_bins[key[1]] >= 0)
             end
         end
     end    
-
-    
 end
 
-# println(sp)
 println(8)
 
 # solve(sp, solver=GurobiSolver())
 
-# multiple cuts :ls
-# regularized decomposition :rd
-# trust region :tr
-# level sets :lv
+# multiple cuts :ls; regularized decomposition :rd; trust region :tr; level sets :lv
 
 # println(sp)
+# OutputFlag=0
 solve(sp, solver=LShapedSolver(:ls, GurobiSolver(OutputFlag=0)))
-
 
 println("\nOptimal value: ", optimal_value(sp))
 
