@@ -10,13 +10,15 @@ struct Stoch_Scenario
     T:: Array{Float64,2}
     W:: Array{Float64,2}
     comps::Array{String, 1}
-    name::String
 end
 
+# time = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape\\shape-3-3_3-3-2_1.tim"
+# core = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape\\shape-3-3_3-3-2_1.mps"
+# stoch = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape\\shape-3-3_3-3-2_1.sto"
 
-time = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_5_25_100.tim"
-core = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_5_25_100.cor"
-stoch = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_5_25_100.sto"
+time = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_15_45_5.tim"
+core = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_15_45_5.cor"
+stoch = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_15_45_5.sto"
 
 TIME = get_TIME(time)
 
@@ -31,6 +33,8 @@ numScens = length(STOCH)
 
 
 FIRST_STG_COLS = get_first_stg_cols(CORE, STG2_C)
+
+FIRST_STG_COLS = binarize_first_stg_cols(FIRST_STG_COLS, CORE[4])
 
 
 just_names = [i[1] for i in FIRST_STG_COLS]
@@ -93,34 +97,7 @@ SCENS = create_scenarios(numScens, STOCH, SEC_STG_RHS, SEC_STG_CONSTR, SEC_STG_R
 
 non_neg = Dict(i[1] => true for i=FIRST_STG_COLS)
 
-# CONTS_IDX = []
-# INTS_IDX = []
-# BINS_IDX = []
 
-
-# for (name, type_var) in FIRST_STG_COLS
-#     if type_var == "cont"
-#         push!(CONTS_IDX, name)
-#     elseif type_var == "int"
-#         # revisar si tiene UP o UI 1. Si no, INTS_IDX. Si es que sí, BINS_IDX.
-#         added = false
-#         for bound in CORE[4]
-#             if bound[3] == name && !added
-#                 if (bound[1] == "UP" || bound[1] == "UI") && (get(bound[4]) == 1 || get(bound[4]) == 1.0)
-#                     push!(BINS_IDX, name)
-#                     added = true
-#                 end
-#             end
-#         end
-#         if !added
-#             push!(INTS_IDX, name)
-#         end
-#     else
-#         push!(BINS_IDX, name)
-#     end
-# end
-
-# println("BINS_IDX: ", BINS_IDX)
 println("[INITIATING PREPROCESSING]")
 
 # ver que linking_vars \subseteq de BINS_IDX
@@ -128,11 +105,18 @@ println("[INITIATING PREPROCESSING]")
 LINKING_VARS = linking_vars(SEC_STG_ROWS, FIRST_STG_COLS, SEC_STG_CONSTR)
 println("LINKING VARS: ", LINKING_VARS)
 
+for link_var in LINKING_VARS
+    for (name, var_type) in FIRST_STG_COLS
+        if link_var == name && var_type != "bin"
+            throw("Problem not suited for Integer L-Shaped Method: linking variables are not all binary")
+        end
+    end
+end
+
+
 # Ahora crear los L_k y L
 # A son los coeficientes de FIRST_STG_ROWS
 # b es FIRST_STG_RHS
-# bounds para z_k son las de primera etapa
-# bounds para y_k son las de segunda etapa
 
 L = 0.0
 for i in 1:numScens
@@ -141,26 +125,24 @@ for i in 1:numScens
     L += SCENS[i].p * Lk.objVal
 end
 println("[PREPROCESSING READY, L = ", L, "]")
-# L = -264.16
 
 # Crear Maestro
-# min c^{T}x + theta
+# min c^{T}x + θ
 #       Ax ~ b
 #       x ~ 0 (bounds)
-#       theta >= L
+#       θ >= L
 
-master, x, θ = init_master(FIRST_STG_COLS, FIRST_STG_OBJECT, FIRST_STG_ROWS, FIRST_STG_RHS, GurobiSolver, CORE[4])
+master, x, θ = init_master(FIRST_STG_COLS, FIRST_STG_OBJECT, FIRST_STG_ROWS, FIRST_STG_RHS, GurobiSolver, CORE[4], L)
 
 solve(master)
 
 x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
 
 # CREAR v_x con referencia a constraints de las que necesito dual (z = x), para poder obtener duales (getdual(constr))
-# JuMP.setRHS(mycon, 3)  # Now x + y <= 3
 v_xs = create_v_xs(x_hat, SCENS, numScens, CORE[4], FIRST_STG_COLS, SEC_STG_COLS)
 
 # v_xs = [[modelo1, constr_pi1], [...], ...]
-# pi_hat[k] es valor del pi
+# pi_hat[k] es valor del pi para problema del escenario k en la actual iteración
 
 v_x_hat = 0.0
 π_hat = []
@@ -182,11 +164,18 @@ while θ_hat < v_x_hat - τ
     iter_count += 1
     println("θ_hat: ", θ_hat)
     println("v_x_hat: ", v_x_hat)
+    println("Master objective: ", master.objVal)
     # Create cut
-    β = sum(SCENS[k].p * (v_xs[k][1].objVal - π_hat[k]'x_hat) for k in 1:numScens)
-    α = sum(SCENS[k].p * π_hat[k] for k in 1:numScens)
+    # β = sum(SCENS[k].p * (v_xs[k][1].objVal - π_hat[k]'x_hat) for k in 1:numScens)
+    # α = sum(SCENS[k].p * π_hat[k] for k in 1:numScens)
     
-    @constraint(master, θ >= sum(α[i] * x[names1[i]] for i in 1:length(names1)) + β)
+    # @constraint(master, θ >= sum(α[i] * x[names1[i]] for i in 1:length(names1)) + β)
+
+    # Integer L-Shaped
+    # theta >= (L - v(x'))[SUM_{i en S(x')}(1 - x_i) + SUM_{i no en S(x')}(x_{i})] + v(x')
+    S = [i for i in 1:length(names1) if master.colVal[i] >= 0.9]
+    @constraint(master, θ >= (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
+
     solve(master)
     x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
 
@@ -201,11 +190,18 @@ while θ_hat < v_x_hat - τ
         push!(π_hat, π_k)
         v_x_hat += SCENS[k].p * v_xs[k][1].objVal
     end
-
+    # if iter_count > 200
+    #     break
+    # end
 end
 
 println("\nOptimal value: ", master.objVal)
 
+for i in 1:master.numCols
+    if master.colVal[i] != 0.0
+        println(i, " ", master.colNames[i], ": ", master.colVal[i])
+    end
+end
 
 
 

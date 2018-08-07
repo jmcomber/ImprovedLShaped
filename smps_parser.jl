@@ -349,10 +349,9 @@ end
 function create_scenarios(numScens, STOCH, SEC_STG_RHS, SEC_STG_CONSTR, SEC_STG_ROWS, SEC_STG_COLS, FIRST_STG_COLS)
     SCENS = []
     for s in 1:numScens
-        # CREAR d, q, a
-        copy_RHS = deepcopy(SEC_STG_RHS)
-        copy_AUX2 = deepcopy(AUX2)
-        copy_SEC_STG_CONSTR = deepcopy(SEC_STG_CONSTR)
+        copy_RHS = copy(SEC_STG_RHS)
+        copy_AUX2 = copy(AUX2)
+        copy_SEC_STG_CONSTR = copy(SEC_STG_CONSTR)
         
         for change in STOCH[s][2]
             # ["RHS1", "R0000021", 8.1918]
@@ -377,7 +376,7 @@ function create_scenarios(numScens, STOCH, SEC_STG_RHS, SEC_STG_CONSTR, SEC_STG_
         W = [[copy_SEC_STG_CONSTR[name[2]][col[1]] for col in SEC_STG_COLS] for name in SEC_STG_ROWS]
         W = hcat(W...)'
         comps = [row[1] for row in SEC_STG_ROWS]
-        s = Stoch_Scenario(get(STOCH[s][1][4]), h, q, T, W, comps, STOCH[s][1][2])
+        s = Stoch_Scenario(get(STOCH[s][1][4]), h, q, T, W, comps)
         push!(SCENS, s)
     end
     return SCENS
@@ -402,13 +401,13 @@ function create_Lk(FIRST_STG_COLS, FIRST_STG_ROWS, FIRST_STG_RHS, SEC_STG_COLS, 
     names1 = [var[1] for var in FIRST_STG_COLS]
     # Faltan tipos (usar setcategory(x[i], :Int))
     @variable(m, z[i = names1])
-    for (name, var_type) in FIRST_STG_COLS
-        if var_type == "int"
-            setcategory(z[name], :Int)
-        elseif var_type == "bin"
-            setcategory(z[name], :Bin)
-        end
-    end
+    # for (name, var_type) in FIRST_STG_COLS
+    #     if var_type == "int"
+    #         setcategory(z[name], :Int)
+    #     elseif var_type == "bin"
+    #         setcategory(z[name], :Bin)
+    #     end
+    # end
     names2 = [var[1] for var in SEC_STG_COLS]
     @variable(m, y[j = names2])
     # for (name, var_type) in SEC_STG_COLS
@@ -453,11 +452,10 @@ function create_Lk(FIRST_STG_COLS, FIRST_STG_ROWS, FIRST_STG_RHS, SEC_STG_COLS, 
     return m
 end
 
-function init_master(FIRST_STG_COLS, FIRST_STG_OBJECT, FIRST_STG_ROWS, FIRST_STG_RHS, solver, BOUNDS)
+function init_master(FIRST_STG_COLS, FIRST_STG_OBJECT, FIRST_STG_ROWS, FIRST_STG_RHS, solver, BOUNDS, L)
     master = Model(solver=solver(OutputFlag=0))
 
     names1 = [var[1] for var in FIRST_STG_COLS]
-    # Por ahora sin bounds
     @variable(master, x[i = names1])
     for (name, var_type) in FIRST_STG_COLS
         if var_type == "int"
@@ -467,6 +465,7 @@ function init_master(FIRST_STG_COLS, FIRST_STG_OBJECT, FIRST_STG_ROWS, FIRST_STG
         end
     end
     @variable(master, θ >= L)
+    master.colNames = [names1..., "θ"]
     @objective(master, :Min, sum(FIRST_STG_OBJECT[name] * x[name] for name in names1) + θ)
 
     # agregar constraints Ax ~ b
@@ -481,7 +480,6 @@ function init_master(FIRST_STG_COLS, FIRST_STG_OBJECT, FIRST_STG_ROWS, FIRST_STG
     end
 
     add_bounds!(master, names1, x, BOUNDS, FIRST_STG_COLS)
-
 
     return master, x, θ
 end
@@ -510,20 +508,25 @@ function add_bounds!(m, names, z, BOUNDS, COLS)
     end
 end
 
-
-
 function create_v_xs(x_hat, SCENS, numScens, BOUNDS, FIRST_STG_COLS, SEC_STG_COLS)
     v_xs = [create_v_x(x_hat, SCENS[i], BOUNDS, FIRST_STG_COLS, SEC_STG_COLS) for i in 1:numScens]
 end
 
 function create_v_x(x_hat, SCENARIO, BOUNDS, FIRST_STG_COLS, SEC_STG_COLS)
     v_x = Model(solver=GurobiSolver(OutputFlag=0))
-    # Faltan bounds y tipos (usar set_var_type! ?)
+
     names1 = [var[1] for var in FIRST_STG_COLS]
-    # Faltan tipos (usar set_var_type! ?)
     @variable(v_x, z[i = names1])
     names2 = [var[1] for var in SEC_STG_COLS]
     @variable(v_x, y[j = names2])
+
+    for (name, var_type) in SEC_STG_COLS
+        if var_type == "int"
+            setcategory(y[name], :Int)
+        elseif var_type == "bin"
+            setcategory(y[name], :Bin)
+        end
+    end
 
     @objective(v_x, :Min, sum(SCENARIO.q[j] * y[names2[j]] for j in 1:length(names2)))
 
@@ -543,7 +546,7 @@ function create_v_x(x_hat, SCENARIO, BOUNDS, FIRST_STG_COLS, SEC_STG_COLS)
     end
 
     # z = x_hat
-    # Its duals are π: get reference to return v_x, constrs_π
+    # Its duals are π: get reference to return v_x, constr_π
     @constraint(v_x, constr_π[i=1:length(names1)], z[names1[i]] == x_hat[i])
     add_bounds!(v_x, names2, y, BOUNDS, SEC_STG_COLS)
 
@@ -558,10 +561,24 @@ function update_subproblems!(v_xs, x_hat)
     end
 end
 
-function update_subproblem!(v_k, x_hat, constrs_π)
+function update_subproblem!(v_k, x_hat, constr_π)
     for i in 1:length(x_hat)
-        JuMP.setRHS(constrs_π[i], x_hat[i])
+        JuMP.setRHS(constr_π[i], x_hat[i])
     end
 end
 
+
+
+function binarize_first_stg_cols(FIRST_STG_COLS, BOUNDS)
+    for i in 1:length(FIRST_STG_COLS)
+        for bound in BOUNDS
+            if bound[3] == FIRST_STG_COLS[i][1]
+                if (bound[1] == "UP" || bound[1] == "UI") && (get(bound[4]) == 1 || get(bound[4]) == 1.0)
+                    FIRST_STG_COLS[i] = [FIRST_STG_COLS[i][1], "bin"]
+                end
+            end
+        end
+    end
+    return FIRST_STG_COLS
+end
 
