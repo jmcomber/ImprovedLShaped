@@ -16,9 +16,9 @@ end
 # core = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape\\shape-3-3_3-3-2_1.mps"
 # stoch = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape\\shape-3-3_3-3-2_1.sto"
 
-time = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_15_45_5.tim"
-core = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_15_45_5.cor"
-stoch = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_15_45_5.sto"
+time = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_15_45_15.tim"
+core = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_15_45_15.cor"
+stoch = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_15_45_15.sto"
 
 TIME = get_TIME(time)
 
@@ -139,7 +139,7 @@ solve(master)
 x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
 
 # CREAR v_x con referencia a constraints de las que necesito dual (z = x), para poder obtener duales (getdual(constr))
-v_xs = create_v_xs(x_hat, SCENS, numScens, CORE[4], FIRST_STG_COLS, SEC_STG_COLS)
+v_xs, ys = create_v_xs(x_hat, SCENS, numScens, CORE[4], FIRST_STG_COLS, SEC_STG_COLS)
 
 # v_xs = [[modelo1, constr_pi1], [...], ...]
 # pi_hat[k] es valor del pi para problema del escenario k en la actual iteración
@@ -157,6 +157,82 @@ for k = 1:numScens
 end
 
 τ = 1e-4
+
+iter_count = 0
+while θ_hat < v_x_hat - τ
+    println("Iteración ", iter_count)
+    iter_count += 1
+    println("θ_hat: ", θ_hat)
+    println("v_x_hat: ", v_x_hat)
+    println("Master objective: ", master.objVal)
+    # Create cut
+    β = sum(SCENS[k].p * (v_xs[k][1].objVal - π_hat[k]'x_hat) for k in 1:numScens)
+    α = sum(SCENS[k].p * π_hat[k] for k in 1:numScens)
+    
+    @constraint(master, θ >= sum(α[i] * x[names1[i]] for i in 1:length(names1)) + β)
+
+    # Integer L-Shaped
+    # theta >= (L - v(x'))[SUM_{i en S(x')}(1 - x_i) + SUM_{i no en S(x')}(x_{i})] + v(x')
+    # S = [i for i in 1:length(names1) if master.colVal[i] >= 0.9]
+    # @constraint(master, θ >= (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
+
+    solve(master)
+    x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
+
+    # Change v_xs, solve them and update π_hat
+    update_subproblems!(v_xs, x_hat)
+    v_x_hat = 0.0
+    π_hat = []
+
+    for k = 1:numScens
+        solve(v_xs[k][1])
+        π_k = [getdual(v_xs[k][2][i]) for i in 1:length(names1)]
+        push!(π_hat, π_k)
+        v_x_hat += SCENS[k].p * v_xs[k][1].objVal
+    end
+    # if iter_count > 200
+    #     break
+    # end
+end
+
+println("\nOptimal value Master LP: ", master.objVal)
+
+# Set category for vars
+
+for (name, var_type) in FIRST_STG_COLS
+    if var_type == "int"
+        setcategory(x[name], :Int)
+    elseif var_type == "bin"
+        setcategory(x[name], :Bin)
+    end
+end
+
+for y in ys
+    for (name, var_type) in SEC_STG_COLS
+        if var_type == "int"
+            setcategory(y[name], :Int)
+        elseif var_type == "bin"
+            setcategory(y[name], :Bin)
+        end
+    end
+end
+
+println("Now MIP")
+
+
+
+solve(master)
+
+x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
+
+# CREAR v_x con referencia a constraints de las que necesito dual (z = x), para poder obtener duales (getdual(constr))
+v_xs, ys = create_v_xs(x_hat, SCENS, numScens, CORE[4], FIRST_STG_COLS, SEC_STG_COLS)
+
+# v_xs = [[modelo1, constr_pi1], [...], ...]
+# pi_hat[k] es valor del pi para problema del escenario k en la actual iteración
+
+v_x_hat = 0.0
+π_hat = []
 
 iter_count = 0
 while θ_hat < v_x_hat - τ
@@ -195,7 +271,11 @@ while θ_hat < v_x_hat - τ
     # end
 end
 
-println("\nOptimal value: ", master.objVal)
+
+println("\nOptimal value Master MIP: ", master.objVal)
+
+
+
 
 for i in 1:master.numCols
     if master.colVal[i] != 0.0

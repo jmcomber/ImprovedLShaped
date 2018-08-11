@@ -457,13 +457,13 @@ function init_master(FIRST_STG_COLS, FIRST_STG_OBJECT, FIRST_STG_ROWS, FIRST_STG
 
     names1 = [var[1] for var in FIRST_STG_COLS]
     @variable(master, x[i = names1])
-    for (name, var_type) in FIRST_STG_COLS
-        if var_type == "int"
-            setcategory(x[name], :Int)
-        elseif var_type == "bin"
-            setcategory(x[name], :Bin)
-        end
-    end
+    # for (name, var_type) in FIRST_STG_COLS
+    #     if var_type == "int"
+    #         setcategory(x[name], :Int)
+    #     elseif var_type == "bin"
+    #         setcategory(x[name], :Bin)
+    #     end
+    # end
     @variable(master, θ >= L)
     master.colNames = [names1..., "θ"]
     @objective(master, :Min, sum(FIRST_STG_OBJECT[name] * x[name] for name in names1) + θ)
@@ -509,7 +509,15 @@ function add_bounds!(m, names, z, BOUNDS, COLS)
 end
 
 function create_v_xs(x_hat, SCENS, numScens, BOUNDS, FIRST_STG_COLS, SEC_STG_COLS)
-    v_xs = [create_v_x(x_hat, SCENS[i], BOUNDS, FIRST_STG_COLS, SEC_STG_COLS) for i in 1:numScens]
+    v_xs = []
+    y_xs = []
+    for i in 1:numScens
+        prob, y = create_v_x(x_hat, SCENS[i], BOUNDS, FIRST_STG_COLS, SEC_STG_COLS)
+        push!(v_xs, prob)
+        push!(y_xs, y)
+    end
+
+    return v_xs, y_xs
 end
 
 function create_v_x(x_hat, SCENARIO, BOUNDS, FIRST_STG_COLS, SEC_STG_COLS)
@@ -520,13 +528,13 @@ function create_v_x(x_hat, SCENARIO, BOUNDS, FIRST_STG_COLS, SEC_STG_COLS)
     names2 = [var[1] for var in SEC_STG_COLS]
     @variable(v_x, y[j = names2])
 
-    for (name, var_type) in SEC_STG_COLS
-        if var_type == "int"
-            setcategory(y[name], :Int)
-        elseif var_type == "bin"
-            setcategory(y[name], :Bin)
-        end
-    end
+    # for (name, var_type) in SEC_STG_COLS
+    #     if var_type == "int"
+    #         setcategory(y[name], :Int)
+    #     elseif var_type == "bin"
+    #         setcategory(y[name], :Bin)
+    #     end
+    # end
 
     @objective(v_x, :Min, sum(SCENARIO.q[j] * y[names2[j]] for j in 1:length(names2)))
 
@@ -550,7 +558,7 @@ function create_v_x(x_hat, SCENARIO, BOUNDS, FIRST_STG_COLS, SEC_STG_COLS)
     @constraint(v_x, constr_π[i=1:length(names1)], z[names1[i]] == x_hat[i])
     add_bounds!(v_x, names2, y, BOUNDS, SEC_STG_COLS)
 
-    return v_x, constr_π
+    return [v_x, constr_π], y
 
 end
 
