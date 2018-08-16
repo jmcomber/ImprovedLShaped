@@ -15,17 +15,17 @@ end
 function add_cut!(master, SCENS, v_xs, π_hat, x_hat, numScens, x, θ, names1, is_integer)
     
     if !is_integer
-        # println(π_hat)
-        # println(x_hat)
-        # println(π_hat[1]'x_hat)
         β = sum(SCENS[k].p * (v_xs[k][1].objVal - π_hat[k]'x_hat) for k in 1:numScens)
         α = sum(SCENS[k].p * π_hat[k] for k in 1:numScens)
+        # println("θ >= ", sum(α[i] * x[names1[i]] for i in 1:length(names1)) + β)
         @constraint(master, θ >= sum(α[i] * x[names1[i]] for i in 1:length(names1)) + β)
     else
         # Integer L-Shaped
         # theta >= (L - v(x'))[SUM_{i en S(x')}(1 - x_i) + SUM_{i no en S(x')}(x_{i})] + v(x')
         S = [i for i in 1:length(names1) if x_hat[i] >= 0.9]
-        @constraint(master, θ >= (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
+        # println("θ >= ", (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
+        n = @constraint(master,  θ >= (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
+        # println(n)
     end
 end
 
@@ -56,14 +56,21 @@ function print_iter_info(iter_count, θ_hat, v_x_hat, objVal)
     nothing
 end
 
-function change_category!(vars, COLS)
-    for (name, var_type) in COLS
-        if var_type == "int"
-            setcategory(vars[name], :Int)
-        elseif var_type == "bin"
-            setcategory(vars[name], :Bin)
+function change_category!(vars, COLS, to_int)
+    if to_int
+        for (name, var_type) in COLS
+            if var_type == "int"
+                setcategory(vars[name], :Int)
+            elseif var_type == "bin"
+                setcategory(vars[name], :Bin)
+            end
+        end
+    else 
+        for (name, var_type) in COLS
+            setcategory(vars[name], :Cont)
         end
     end
+
 end
 
 
@@ -192,111 +199,97 @@ solve(master)
 
 x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
 
-# # CREAR v_x con referencia a constraints de las que necesito dual (z = x), para poder obtener duales (getdual(constr))
+# CREAR v_x con referencia a constraints de las que necesito dual (z = x), para poder obtener duales (getdual(constr))
 v_xs, ys = create_v_xs(x_hat, SCENS, numScens, CORE[4], FIRST_STG_COLS, SEC_STG_COLS)
 
-# # v_xs = [[modelo1, constr_pi1], [...], ...]
-# # pi_hat[k] es valor del pi para problema del escenario k en la actual iteración
+# v_xs = [[modelo1, constr_pi1], [...], ...]
+# pi_hat[k] es valor del pi para problema del escenario k en la actual iteración
 
-# v_x_hat = 0.0
-# π_hat = []
+v_x_hat = 0.0
+π_hat = []
 
-# names1 = [var[1] for var in FIRST_STG_COLS]
+names1 = [var[1] for var in FIRST_STG_COLS]
 
-# for k = 1:numScens
-#     solve(v_xs[k][1])
-#     π_k = [getdual(v_xs[k][2][i]) for i in 1:length(names1)]
-#     push!(π_hat, π_k)
-#     v_x_hat += SCENS[k].p * v_xs[k][1].objVal
-# end
+for k = 1:numScens
+    solve(v_xs[k][1])
+    π_k = [getdual(v_xs[k][2][i]) for i in 1:length(names1)]
+    push!(π_hat, π_k)
+    v_x_hat += SCENS[k].p * v_xs[k][1].objVal
+end
 
 τ = 1e-4
 
 
 iter_count = 0
-while θ_hat < v_x_hat - τ
-    print_iter_info(iter_count, θ_hat, v_x_hat, master.objVal)
+
+V = Set([])
+W = Set([])
+
+θ_hat = -1e7
+v_x_hat = 1e7
+objVal = nothing
+
+for y in ys
+    change_category!(y, SEC_STG_COLS, false)
+end
+
+while true
     iter_count += 1
-    
-    
+    change_category!(x, FIRST_STG_COLS, true)
+    # for y in ys
+    #     change_category!(y, SEC_STG_COLS, true)
+    # end
     solve(master)
-
+    objVal = master.objVal
     x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
-
     update_subproblems!(v_xs, x_hat)
-
-
-    # v_xs = [[modelo1, constr_pi1], [...], ...]
-    # pi_hat[k] es valor del pi para problema del escenario k en la actual iteración
-
-    v_x_hat = 0.0
-    π_hat = []
-
-    names1 = [var[1] for var in FIRST_STG_COLS]
-
-    for k = 1:numScens
-        solve(v_xs[k][1])
-        π_k = [getdual(v_xs[k][2][i]) for i in 1:length(names1)]
-        push!(π_hat, π_k)
-        v_x_hat += SCENS[k].p * v_xs[k][1].objVal
+    print_iter_info(iter_count, θ_hat, v_x_hat, objVal)
+    # println("V has ", length(V), " elements")
+    # println("W has ", length(W), " elements")
+    if x_hat in W
+        break
     end
 
+    if !(x_hat in V)
+        println("x_hat not in V")
+        # change_category!(x, FIRST_STG_COLS, false)
+        for y in ys
+            change_category!(y, SEC_STG_COLS, false)
+        end
+        # solve(master)
+        # x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
+        # ?? vamos a tener otro x_hat
+        v_x_hat, π_hat = update_subprob_values(v_xs, numScens, names1, SCENS, false)
+        push!(V, x_hat)
+        # update_subproblems!(v_xs, x_hat)
+        if θ_hat < v_x_hat
+            add_cut!(master, SCENS, v_xs, π_hat, x_hat, numScens, x, θ, names1, false)
+            continue
+        end
+    end
 
-
-
-    add_cut!(master, SCENS, v_xs, π_hat, x_hat, numScens, x, θ, names1, false)
-end
-
-println("\nOptimal value Master LP: ", master.objVal)
-
-
-# Set category for vars
-change_category!(x, FIRST_STG_COLS)
-for y in ys
-    change_category!(y, SEC_STG_COLS)
-end
-
-
-v_x_hat = 1e7
-
-println("Now MIP")
-
-
-iter_count = 0
-while θ_hat < v_x_hat - τ
-    print_iter_info(iter_count, θ_hat, v_x_hat, master.objVal)
-    iter_count += 1
-    
-    solve(master)
-
-    x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
-
-    update_subproblems!(v_xs, x_hat)
-
-
-    # v_xs = [[modelo1, constr_pi1], [...], ...]
-    # pi_hat[k] es valor del pi para problema del escenario k en la actual iteración
-
-    v_x_hat = 0.0
-    π_hat = []
+    # change_category!(x, FIRST_STG_COLS, true)
+    for y in ys
+        change_category!(y, SEC_STG_COLS, true)
+    end
 
     v_x_hat, π_hat = update_subprob_values(v_xs, numScens, names1, SCENS, true)
-    # for k = 1:numScens
-    #     solve(v_xs[k][1])
-    #     # π_k = [getdual(v_xs[k][2][i]) for i in 1:length(names1)]
-    #     # push!(π_hat, π_k)
-    #     v_x_hat += SCENS[k].p * v_xs[k][1].objVal
-    # end
-
+    if x_hat in W
+        break
+    end
+    push!(W, x_hat)
+    
     add_cut!(master, SCENS, v_xs, π_hat, x_hat, numScens, x, θ, names1, true)
+    
+    # update_subproblems!(v_xs, x_hat)
 end
 
 println("\nOptimal value Master MIP: ", master.objVal)
 
 
-for i in 1:master.numCols
+for i in 1:master.numCols-1
     if master.colVal[i] != 0.0
-        println(master.colNames[i], ": ", master.colVal[i])
+        println(master.colNames[i], ": ", x_hat[i])
     end
 end
 
