@@ -453,7 +453,7 @@ function create_Lk(FIRST_STG_COLS, FIRST_STG_ROWS, FIRST_STG_RHS, SEC_STG_COLS, 
 end
 
 function init_master(FIRST_STG_COLS, FIRST_STG_OBJECT, FIRST_STG_ROWS, FIRST_STG_RHS, solver, BOUNDS, L)
-    master = Model(solver=solver(OutputFlag=0))
+    master = Model(solver=solver())
 
     names1 = [var[1] for var in FIRST_STG_COLS]
     @variable(master, x[i = names1])
@@ -574,7 +574,6 @@ function update_subproblem!(v_k, x_hat, constr_π)
         JuMP.setRHS(constr_π[i], x_hat[i])
     end
 end
-
 
 
 function binarize_first_stg_cols(FIRST_STG_COLS, BOUNDS)

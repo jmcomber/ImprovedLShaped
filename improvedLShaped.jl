@@ -17,15 +17,13 @@ function add_cut!(master, SCENS, v_xs, π_hat, x_hat, numScens, x, θ, names1, i
     if !is_integer
         β = sum(SCENS[k].p * (v_xs[k][1].objVal - π_hat[k]'x_hat) for k in 1:numScens)
         α = sum(SCENS[k].p * π_hat[k] for k in 1:numScens)
-        # println("θ >= ", sum(α[i] * x[names1[i]] for i in 1:length(names1)) + β)
         @constraint(master, θ >= sum(α[i] * x[names1[i]] for i in 1:length(names1)) + β)
+        # println(n)
     else
         # Integer L-Shaped
         # theta >= (L - v(x'))[SUM_{i en S(x')}(1 - x_i) + SUM_{i no en S(x')}(x_{i})] + v(x')
         S = [i for i in 1:length(names1) if x_hat[i] >= 0.9]
-        # println("θ >= ", (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
-        n = @constraint(master,  θ >= (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
-        # println(n)
+        @constraint(master,  θ >= (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
     end
 end
 
@@ -78,9 +76,9 @@ end
 # core = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape\\shape-3-3_3-3-2_1.mps"
 # stoch = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape\\shape-3-3_3-3-2_1.sto"
 
-time = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_15_45_15.tim"
-core = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_15_45_15.cor"
-stoch = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_15_45_15.sto"
+time = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_10_50_100.tim"
+core = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_10_50_100.cor"
+stoch = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_10_50_100.sto"
 
 TIME = get_TIME(time)
 
@@ -205,17 +203,6 @@ v_xs, ys = create_v_xs(x_hat, SCENS, numScens, CORE[4], FIRST_STG_COLS, SEC_STG_
 # v_xs = [[modelo1, constr_pi1], [...], ...]
 # pi_hat[k] es valor del pi para problema del escenario k en la actual iteración
 
-v_x_hat = 0.0
-π_hat = []
-
-names1 = [var[1] for var in FIRST_STG_COLS]
-
-for k = 1:numScens
-    solve(v_xs[k][1])
-    π_k = [getdual(v_xs[k][2][i]) for i in 1:length(names1)]
-    push!(π_hat, π_k)
-    v_x_hat += SCENS[k].p * v_xs[k][1].objVal
-end
 
 τ = 1e-4
 
@@ -233,42 +220,37 @@ for y in ys
     change_category!(y, SEC_STG_COLS, false)
 end
 
+names1 = [var[1] for var in FIRST_STG_COLS]
+
 while true
+    # println("x_hat: $x_hat")
+    # sleep(1)
     iter_count += 1
     change_category!(x, FIRST_STG_COLS, true)
-    # for y in ys
-    #     change_category!(y, SEC_STG_COLS, true)
-    # end
     solve(master)
     objVal = master.objVal
     x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
     update_subproblems!(v_xs, x_hat)
     print_iter_info(iter_count, θ_hat, v_x_hat, objVal)
-    # println("V has ", length(V), " elements")
-    # println("W has ", length(W), " elements")
+    
     if x_hat in W
         break
     end
 
     if !(x_hat in V)
-        println("x_hat not in V")
-        # change_category!(x, FIRST_STG_COLS, false)
         for y in ys
             change_category!(y, SEC_STG_COLS, false)
         end
-        # solve(master)
-        # x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
-        # ?? vamos a tener otro x_hat
+        
         v_x_hat, π_hat = update_subprob_values(v_xs, numScens, names1, SCENS, false)
         push!(V, x_hat)
-        # update_subproblems!(v_xs, x_hat)
+        
         if θ_hat < v_x_hat
             add_cut!(master, SCENS, v_xs, π_hat, x_hat, numScens, x, θ, names1, false)
             continue
         end
     end
 
-    # change_category!(x, FIRST_STG_COLS, true)
     for y in ys
         change_category!(y, SEC_STG_COLS, true)
     end

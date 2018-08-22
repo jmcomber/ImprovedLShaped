@@ -12,22 +12,6 @@ struct Stoch_Scenario
     comps::Array{String, 1}
 end
 
-function add_cut!(master, SCENS, v_xs, π_hat, x_hat, numScens, x, θ, names1, is_integer)
-    
-    if !is_integer
-        # println(π_hat)
-        # println(x_hat)
-        # println(π_hat[1]'x_hat)
-        β = sum(SCENS[k].p * (v_xs[k][1].objVal - π_hat[k]'x_hat) for k in 1:numScens)
-        α = sum(SCENS[k].p * π_hat[k] for k in 1:numScens)
-        @constraint(master, θ >= sum(α[i] * x[names1[i]] for i in 1:length(names1)) + β)
-    else
-        # Integer L-Shaped
-        # theta >= (L - v(x'))[SUM_{i en S(x')}(1 - x_i) + SUM_{i no en S(x')}(x_{i})] + v(x')
-        S = [i for i in 1:length(names1) if x_hat[i] >= 0.9]
-        @constraint(master, θ >= (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
-    end
-end
 
 function update_subprob_values(v_xs, numScens, names1, SCENS, is_integer)
     v_x_hat = 0.0
@@ -195,6 +179,9 @@ println("[PREPROCESSING READY, L = ", L, "]")
 
 master, x, θ = init_master(FIRST_STG_COLS, FIRST_STG_OBJECT, FIRST_STG_ROWS, FIRST_STG_RHS, GurobiSolver, CORE[4], L)
 
+change_category!(x, FIRST_STG_COLS, true)
+
+
 solve(master)
 
 x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
@@ -202,98 +189,86 @@ x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
 # # CREAR v_x con referencia a constraints de las que necesito dual (z = x), para poder obtener duales (getdual(constr))
 v_xs, ys = create_v_xs(x_hat, SCENS, numScens, CORE[4], FIRST_STG_COLS, SEC_STG_COLS)
 
-# # v_xs = [[modelo1, constr_pi1], [...], ...]
-# # pi_hat[k] es valor del pi para problema del escenario k en la actual iteración
-
-v_x_hat = 0.0
-π_hat = []
-
-names1 = [var[1] for var in FIRST_STG_COLS]
-
-for k = 1:numScens
-    solve(v_xs[k][1])
-    π_k = [getdual(v_xs[k][2][i]) for i in 1:length(names1)]
-    push!(π_hat, π_k)
-    v_x_hat += SCENS[k].p * v_xs[k][1].objVal
-end
-
-τ = 1e-4
-
-
-iter_count = 0
-while θ_hat < v_x_hat - τ
-    print_iter_info(iter_count, θ_hat, v_x_hat, master.objVal)
-    iter_count += 1
-    
-    
-    solve(master)
-
-    x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
-
-    update_subproblems!(v_xs, x_hat)
-
-
-    # v_xs = [[modelo1, constr_pi1], [...], ...]
-    # pi_hat[k] es valor del pi para problema del escenario k en la actual iteración
-
-    v_x_hat = 0.0
-    π_hat = []
-
-    names1 = [var[1] for var in FIRST_STG_COLS]
-
-    for k = 1:numScens
-        solve(v_xs[k][1])
-        π_k = [getdual(v_xs[k][2][i]) for i in 1:length(names1)]
-        push!(π_hat, π_k)
-        v_x_hat += SCENS[k].p * v_xs[k][1].objVal
-    end
-
-    add_cut!(master, SCENS, v_xs, π_hat, x_hat, numScens, x, θ, names1, false)
-end
-
-println("\nOptimal value Master LP: ", master.objVal)
-
-
-# Set category for vars
-change_category!(x, FIRST_STG_COLS, true)
 for y in ys
     change_category!(y, SEC_STG_COLS, true)
 end
 
 
-v_x_hat = 1e7
+τ = 1e-4
 
-println("Now MIP")
+V = Set([])
 
-
-iter_count = 0
-while θ_hat < v_x_hat - τ
-    print_iter_info(iter_count, θ_hat, v_x_hat, master.objVal)
-    iter_count += 1
-    
-    solve(master)
-
+function add_lazy_ilsm(cb)
     x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
+    x_hat = [round(i, 0) for i in x_hat]
+    # println("x_hat: $x_hat, θ_hat: $θ_hat")
+
 
     update_subproblems!(v_xs, x_hat)
+
+    for y in ys
+        change_category!(y, SEC_STG_COLS, false)
+    end
+
+    names1 = [var[1] for var in FIRST_STG_COLS]
+
+    v_x_hat, π_hat = update_subprob_values(v_xs, numScens, names1, SCENS, false)
+    push!(V, x_hat)
+    
+    if θ_hat < v_x_hat - τ
+        # println("Going to add subgradient cut")
+        β = sum(SCENS[k].p * (v_xs[k][1].objVal - π_hat[k]'x_hat) for k in 1:numScens)
+        α = sum(SCENS[k].p * π_hat[k] for k in 1:numScens)
+        @lazyconstraint(cb, θ >= sum(α[i] * x[names1[i]] for i in 1:length(names1)) + β)
+        return
+    end
+
+    if x_hat ∈ V
+        
+        for y ∈ ys
+            change_category!(y, SEC_STG_COLS, true)
+        end
+    
+        v_x_hat, π_hat = update_subprob_values(v_xs, numScens, names1, SCENS, true)
+        S = [i for i in 1:length(names1) if x_hat[i] >= 0.9]
+            @lazyconstraint(cb, θ >= (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
+        if x_hat ∉ W
+            push!(W, x_hat)
+            # println("Going to add integer cut")
+            # S = [i for i in 1:length(names1) if x_hat[i] >= 0.9]
+            # @lazyconstraint(cb, θ >= (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
+        end
+    end
 
 
     # v_xs = [[modelo1, constr_pi1], [...], ...]
     # pi_hat[k] es valor del pi para problema del escenario k en la actual iteración
 
-    v_x_hat = 0.0
-    π_hat = []
+    # v_x_hat = 0.0
+    # π_hat = []
 
-    v_x_hat, π_hat = update_subprob_values(v_xs, numScens, names1, SCENS, true)
+    # names1 = [var[1] for var in FIRST_STG_COLS]
+
     # for k = 1:numScens
     #     solve(v_xs[k][1])
-    #     # π_k = [getdual(v_xs[k][2][i]) for i in 1:length(names1)]
-    #     # push!(π_hat, π_k)
+    #     π_k = [getdual(v_xs[k][2][i]) for i in 1:length(names1)]
+    #     push!(π_hat, π_k)
     #     v_x_hat += SCENS[k].p * v_xs[k][1].objVal
     # end
 
-    add_cut!(master, SCENS, v_xs, π_hat, x_hat, numScens, x, θ, names1, true)
+    # println("v_x_hat: $v_x_hat")
+    # if θ_hat < v_x_hat - τ
+    #     S = [i for i in 1:length(names1) if x_hat[i] >= 0.9]
+    #     @lazyconstraint(cb, θ >= (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
+    # end
+
 end
+
+
+addlazycallback(master, add_lazy_ilsm)
+
+
+solve(master)
 
 println("\nOptimal value Master MIP: ", master.objVal)
 
