@@ -12,34 +12,6 @@ struct Stoch_Scenario
     comps::Array{String, 1}
 end
 
-function add_cut!(master, SCENS, v_xs, π_hat, x_hat, numScens, x, θ, names1, is_integer)
-    
-    if !is_integer
-        β = sum(SCENS[k].p * (v_xs[k][1].objVal - π_hat[k]'x_hat) for k in 1:numScens)
-        α = sum(SCENS[k].p * π_hat[k] for k in 1:numScens)
-        @constraint(master, θ >= sum(α[i] * x[names1[i]] for i in 1:length(names1)) + β)
-    else
-        # Integer L-Shaped
-        # theta >= (L - v(x'))[SUM_{i en S(x')}(1 - x_i) + SUM_{i no en S(x')}(x_{i})] + v(x')
-        S = [i for i in 1:length(names1) if x_hat[i] >= 0.9]
-        n = @constraint(master,  θ >= (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
-    end
-end
-
-function add_cut_lazy!(cb, SCENS, v_xs, π_hat, x_hat, numScens, x, θ, names1, is_integer) 
-    if !is_integer
-        β = sum(SCENS[k].p * (v_xs[k][1].objVal - π_hat[k]'x_hat) for k in 1:numScens)
-        α = sum(SCENS[k].p * π_hat[k] for k in 1:numScens)
-        # println("θ >=", sum(α[i] * x[names1[i]] for i in 1:length(names1)) + β)
-        # println("$(getvalue(θ)) >=? $(sum(α[i] * getvalue(x)[names1[i]] for i in 1:length(names1))) + $β")
-        @lazyconstraint(cb, θ >= sum(α[i] * x[names1[i]] for i in 1:length(names1)) + β)
-    else
-        # Integer L-Shaped
-        # theta >= (L - v(x'))[SUM_{i en S(x')}(1 - x_i) + SUM_{i no en S(x')}(x_{i})] + v(x')
-        S = [i for i in 1:length(names1) if x_hat[i] >= 0.9]
-        @lazyconstraint(cb, θ >= (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
-    end
-end
 
 function update_subprob_values(v_xs, numScens, names1, SCENS, is_integer)
     v_x_hat = 0.0
@@ -85,56 +57,14 @@ function change_category!(vars, COLS, to_int)
 
 end
 
-function add_lazy_integer_cut(cb)
-
-    x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
-    println("In callback function, x=$x_hat, θ=$θ_hat")
-
-    update_subproblems!(v_xs, x_hat)
-    # print_iter_info(iter_count, θ_hat, v_x_hat, objVal)
-
-    τ = 1e-4
-
-    if x_hat ∉ W
-        if x_hat ∉ V
-            for y in ys
-                change_category!(y, SEC_STG_COLS, false)
-            end
-            
-            v_x_hat, π_hat = update_subprob_values(v_xs, numScens, names1, SCENS, false)
-            push!(V, x_hat)
-            
-            if θ_hat < v_x_hat - τ
-                println("Going to add subgradient cut")
-                β = sum(SCENS[k].p * (v_xs[k][1].objVal - π_hat[k]'x_hat) for k in 1:numScens)
-                α = sum(SCENS[k].p * π_hat[k] for k in 1:numScens)
-                @lazyconstraint(cb, θ >= sum(α[i] * x[names1[i]] for i in 1:length(names1)) + β)
-            end
-        else
-            for y ∈ ys
-                change_category!(y, SEC_STG_COLS, true)
-            end
-        
-            v_x_hat, π_hat = update_subprob_values(v_xs, numScens, names1, SCENS, true)
-            if x_hat ∉ W
-                push!(W, x_hat)
-                println("Going to add integer cut")
-                S = [i for i in 1:length(names1) if x_hat[i] >= 0.9]
-                @lazyconstraint(cb, θ >= (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
-            end
-        end
-    end
-end
-
-
 
 # time = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape\\shape-3-3_3-3-2_1.tim"
 # core = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape\\shape-3-3_3-3-2_1.mps"
 # stoch = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\shape\\shape-3-3_3-3-2_1.sto"
 
-time = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_5_25_100.tim"
-core = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_5_25_100.cor"
-stoch = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_5_25_100.sto"
+time = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_10_50_50.tim"
+core = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_10_50_50.cor"
+stoch = "C:\\Jose\\Universidad\\JULIA_MISTI\\SMPS_Parser\\sslp\\sslp_10_50_50.sto"
 
 TIME = get_TIME(time)
 
@@ -151,7 +81,9 @@ FIRST_STG_COLS = get_first_stg_cols(CORE, STG2_C)
 
 FIRST_STG_COLS = binarize_first_stg_cols(FIRST_STG_COLS, CORE[4])
 
+
 just_names = [i[1] for i in FIRST_STG_COLS]
+
 
 FIRST_STG_OBJECT, object_name = get_first_stg_object(CORE)
 
@@ -245,55 +177,108 @@ println("[PREPROCESSING READY, L = ", L, "]")
 #       x ~ 0 (bounds)
 #       θ >= L
 
-
-
 master, x, θ = init_master(FIRST_STG_COLS, FIRST_STG_OBJECT, FIRST_STG_ROWS, FIRST_STG_RHS, GurobiSolver, CORE[4], L)
+
+change_category!(x, FIRST_STG_COLS, true)
 
 
 solve(master)
 
-
 x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
 
-# CREAR v_x con referencia a constraints de las que necesito dual (z = x), para poder obtener duales (getdual(constr))
+# # CREAR v_x con referencia a constraints de las que necesito dual (z = x), para poder obtener duales (getdual(constr))
 v_xs, ys = create_v_xs(x_hat, SCENS, numScens, CORE[4], FIRST_STG_COLS, SEC_STG_COLS)
 
-# v_xs = [[modelo1, constr_pi1], [...], ...]
-# pi_hat[k] es valor del pi para problema del escenario k en la actual iteración
+for y in ys
+    change_category!(y, SEC_STG_COLS, true)
+end
 
-names1 = [var[1] for var in FIRST_STG_COLS]
 
 τ = 1e-4
-
-iter_count = 0
 
 V = Set([])
 W = Set([])
 
-θ_hat = -1e7
-v_x_hat = 1e7
-objVal = nothing
+function add_lazy_ilsm(cb)
+    x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
+    x_hat = [round(i, 0) for i in x_hat]
+    # println("x_hat: $x_hat, θ_hat: $θ_hat")
 
-addlazycallback(master, add_lazy_integer_cut)
 
-change_category!(x, FIRST_STG_COLS, true)
+    update_subproblems!(v_xs, x_hat)
 
-for y in ys
-    change_category!(y, SEC_STG_COLS, false)
+    for y in ys
+        change_category!(y, SEC_STG_COLS, false)
+    end
+
+    names1 = [var[1] for var in FIRST_STG_COLS]
+
+    v_x_hat, π_hat = update_subprob_values(v_xs, numScens, names1, SCENS, false)
+    push!(V, x_hat)
+    
+    if θ_hat < v_x_hat - τ
+        # println("Going to add subgradient cut")
+        β = sum(SCENS[k].p * (v_xs[k][1].objVal - π_hat[k]'x_hat) for k in 1:numScens)
+        α = sum(SCENS[k].p * π_hat[k] for k in 1:numScens)
+        @lazyconstraint(cb, θ >= sum(α[i] * x[names1[i]] for i in 1:length(names1)) + β)
+        return
+    end
+
+    if x_hat ∈ V
+        
+        for y ∈ ys
+            change_category!(y, SEC_STG_COLS, true)
+        end
+    
+        v_x_hat, π_hat = update_subprob_values(v_xs, numScens, names1, SCENS, true)
+        S = [i for i in 1:length(names1) if x_hat[i] >= 0.9]
+            @lazyconstraint(cb, θ >= (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
+        if x_hat ∉ W
+            push!(W, x_hat)
+            # println("Going to add integer cut")
+            # S = [i for i in 1:length(names1) if x_hat[i] >= 0.9]
+            # @lazyconstraint(cb, θ >= (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
+        end
+    end
+
+
+    # v_xs = [[modelo1, constr_pi1], [...], ...]
+    # pi_hat[k] es valor del pi para problema del escenario k en la actual iteración
+
+    # v_x_hat = 0.0
+    # π_hat = []
+
+    # names1 = [var[1] for var in FIRST_STG_COLS]
+
+    # for k = 1:numScens
+    #     solve(v_xs[k][1])
+    #     π_k = [getdual(v_xs[k][2][i]) for i in 1:length(names1)]
+    #     push!(π_hat, π_k)
+    #     v_x_hat += SCENS[k].p * v_xs[k][1].objVal
+    # end
+
+    # println("v_x_hat: $v_x_hat")
+    # if θ_hat < v_x_hat - τ
+    #     S = [i for i in 1:length(names1) if x_hat[i] >= 0.9]
+    #     @lazyconstraint(cb, θ >= (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
+    # end
+
 end
 
-solve(master)
 
+addlazycallback(master, add_lazy_ilsm)
+
+
+solve(master)
 
 println("\nOptimal value Master MIP: ", master.objVal)
 
 
-println(getvalue(x))
-# for i in 1:master.numCols-1
-#     if master.colVal[i] != 0.0
-#         println(master.colNames[i], ": ", x_hat[i])
-#     end
-# end
+for i in 1:master.numCols
+    if master.colVal[i] != 0.0
+        println(master.colNames[i], ": ", master.colVal[i])
+    end
+end
 
 
 
