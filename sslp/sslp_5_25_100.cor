@@ -290,12 +290,6 @@ COLUMNS
     y_25_4    c31                  1
     y_25_5    obj                -23   c6                 -23
     y_25_5    c31                  1
-    MARK0001  'MARKER'                 'INTEND'
-    x_1_0     obj               1000   c2                   1
-    x_2_0     obj               1000   c3                   1
-    x_3_0     obj               1000   c4                   1
-    x_4_0     obj               1000   c5                   1
-    x_5_0     obj               1000   c6                   1
 RHS
     rhs       c1                  -5   c7                   1
     rhs       c8                   1   c9                   1

@@ -1428,22 +1428,6 @@ COLUMNS
     y_45_14   c61                  1
     y_45_15   obj                 -1   c16                 -1
     y_45_15   c61                  1
-    MARK0001  'MARKER'                 'INTEND'
-    x_1_0     obj               1000   c2                   1
-    x_2_0     obj               1000   c3                   1
-    x_3_0     obj               1000   c4                   1
-    x_4_0     obj               1000   c5                   1
-    x_5_0     obj               1000   c6                   1
-    x_6_0     obj               1000   c7                   1
-    x_7_0     obj               1000   c8                   1
-    x_8_0     obj               1000   c9                   1
-    x_9_0     obj               1000   c10                  1
-    x_10_0    obj               1000   c11                  1
-    x_11_0    obj               1000   c12                  1
-    x_12_0    obj               1000   c13                  1
-    x_13_0    obj               1000   c14                  1
-    x_14_0    obj               1000   c15                  1
-    x_15_0    obj               1000   c16                  1
 RHS
     rhs       c1                 -15   c17                  1
     rhs       c18                  1   c19                  1

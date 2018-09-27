@@ -92,6 +92,8 @@ println("[PREPROCESSING READY, L = ", L, "]")
 master, x, θ = init_master(FIRST_STG_COLS, FIRST_STG_OBJECT, FIRST_STG_ROWS, FIRST_STG_RHS, GurobiSolver, CORE[4], L)
 
 names1 = [var[1] for var in FIRST_STG_COLS]
+names2 = [var[1] for var in SEC_STG_COLS]
+
 τ = 1e-4
 
 function solve_decomposed(master, improved)
@@ -120,7 +122,7 @@ function solve_decomposed(master, improved)
             end
 
             v_x_hat, π_hat = update_subprob_values(v_xs, numScens, names1, SCENS, false)
-            if v_x_hat != nothing   #optimality
+            if v_x_hat !== nothing   #optimality
                 push!(V, x_hat)
             
                 if θ_hat < v_x_hat - τ
@@ -136,9 +138,14 @@ function solve_decomposed(master, improved)
                     end
                     v_x_hat, π_hat = update_subprob_values(v_xs, numScens, names1, SCENS, true)
                     S = [i for i in 1:length(names1) if x_hat[i] >= 0.9]
+                    if v_x_hat !== nothing
                         @lazyconstraint(cb, θ >= (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
-                    if x_hat ∉ W
-                        push!(W, x_hat)
+                        if x_hat ∉ W
+                            push!(W, x_hat)
+                        end
+                    else
+                        S = [i for i in 1:length(names1) if x_hat[i] >= 0.9]
+                        @lazyconstraint(cb, 1 <= (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))))
                     end
                 end
             else    #feasibility
@@ -162,20 +169,18 @@ function solve_decomposed(master, improved)
         v_x_hat, π_hat = update_subprob_values(v_xs, numScens, names1, SCENS, true)
 
         # iter_count = 0
-        while θ_hat < v_x_hat - τ
-            # print_iter_info(iter_count, θ_hat, v_x_hat, master.objVal)
-            # iter_count += 1
+        while v_x_hat === nothing || θ_hat < v_x_hat - τ
               
             solve(master)
             x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
             update_subproblems!(v_xs, x_hat)
 
             v_x_hat, π_hat = update_subprob_values(v_xs, numScens, names1, SCENS, false)
-            # println(v_x_hat, " ", π_hat, " ", x_hat)
-            if v_x_hat != nothing
+            
+            if v_x_hat !== nothing
                 add_cut!(master, SCENS, v_xs, π_hat, x_hat, numScens, x, θ, names1, false)
             else
-                add_feas_cut!(master, SCENS, v_xs, π_hat, x_hat, numScens, x, θ, names1, false)
+                add_feas_cut!(SCENS, v_xs, numScens, ys, names2)
             end
             
         end
@@ -196,8 +201,13 @@ function solve_decomposed(master, improved)
             x_hat = [round(i, 0) for i in x_hat]
             update_subproblems!(v_xs, x_hat)
             v_x_hat, π_hat = update_subprob_values(v_xs, numScens, names1, SCENS, true)
-            S = [i for i in 1:length(names1) if x_hat[i] >= 0.9]
-            @lazyconstraint(cb, θ >= (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
+            if v_x_hat != nothing
+                S = [i for i in 1:length(names1) if x_hat[i] >= 0.9]
+                @lazyconstraint(cb, θ >= (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
+            else
+                S = [i for i in 1:length(names1) if x_hat[i] >= 0.9]
+                @lazyconstraint(cb, 1 <= (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))))     
+            end
         end
 
         addlazycallback(master, add_lazy_ilsm)
@@ -207,7 +217,7 @@ function solve_decomposed(master, improved)
 end
 
 
-solve_decomposed(master, false)
+solve_decomposed(master, true)
 
 println("\nOptimal value Master MIP: ", master.objVal)
 
