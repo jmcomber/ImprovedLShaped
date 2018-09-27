@@ -25,12 +25,24 @@ function add_cut!(master, SCENS, v_xs, π_hat, x_hat, numScens, x, θ, names1, i
     end
 end
 
+
+function add_feas_cut!(master, SCENS, v_xs, π_hat, x_hat, numScens, x, θ, names1, is_integer)
+    if !is_integer
+        # Corte de Benders normal
+
+    end
+    
+end
+
 function update_subprob_values(v_xs, numScens, names1, SCENS, is_integer)
     v_x_hat = 0.0
     π_hat = []
     if !is_integer
         for k = 1:numScens
-            solve(v_xs[k][1])
+            status = solve(v_xs[k][1])
+            if status == :InfeasibleOrUnbounded || status == :Infeasible
+                return nothing, nothing
+            end
             π_k = [getdual(v_xs[k][2][i]) for i in 1:length(names1)]
             push!(π_hat, π_k)
             v_x_hat += SCENS[k].p * v_xs[k][1].objVal
