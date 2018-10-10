@@ -25,15 +25,67 @@ function add_cut!(master, SCENS, v_xs, π_hat, x_hat, numScens, x, θ, names1, i
     end
 end
 
+function get_duals_constr(v_xs, numScens, k)
+    λ1 = getdual(v_xs[k][3])
+    λ2 = getdual(v_xs[k][2])
+    λ1, λ2
+end
 
-function add_feas_cut!(SCENS, v_xs, numScens, ys, names2)
-    # max (b − D ˆy)Tu
-    # s.t. ATu ≤ c
-    # u ≥ 0
-    # agregar (b − D ˆy)Tu ≤ 0
-    for k = 1:numScens
-        @constraint(v_xs[k][1], sum(SCENS[k].q[i] * ys[k][names2[i]] for i = 1:length(names2)) >= 0)
+function add_feas_cut!(master, x, names1, SCENS, v_xs, numScens, ys, names2, k)
+    # v_xs[i][3] tiene los constr_λ de ese problema, y v_xs[i][2] los constr_π.
+    # primero conseguir valores duales, después multiplicarlo por las matrices, y armar la restricción
+    # conseguir duales
+    λ1, λ2 = get_duals_constr(v_xs, numScens, k)
+    println(size(λ1), " ", size(λ2))
+    println(size(names2), " ", size(names1))
+    #multiplicar por matrices (SCENS[k].T, SCENS[k].W, SCENS[k].h)
+    #println(length(λ1[1]), " ", length(SCENS[1].h), " ", length(λ2[1]))
+    
+    # bar_a es λ·A, donde A en este caso es [T W]
+    #                                       [I 0]
+    
+    A1 = hcat(SCENS[k].T, SCENS[k].W)
+    # I de tamaño (length(x), length(names1) + length(names2))?
+    A2 = eye(length(x), length(names1) + length(names2))
+    A = vcat(A1, A2)
+    λ = vcat(λ1, λ2)
+    bar_a = λ'A
+    upper_affine1 = 0
+    for i in 1:length(names2)
+        if getupperbound(ys[k][names2[i]]) !== Inf && bar_a[i] < 0
+            println(!"Algo")
+            upper_affine1 += bar_a[i] * getupperbound(ys[k][names2[i]])
+        end
     end
+
+    upper_affine2 = 0
+    for i in 1:length(names1)
+        if getupperbound(x[names1[i]]) !== Inf && bar_a[length(names2) + i] < 0
+            upper_affine2 += bar_a[length(names2) + i] * getupperbound(x[names1[i]])
+        end
+    end
+    # println(upper_affine1, " ", upper_affine2)
+    upper_affine = upper_affine1 + upper_affine2
+    
+    lower_affine1 = 0
+    for i in 1:length(names2)
+        if getlowerbound(ys[k][names2[i]]) !== -Inf && bar_a[i] > 0
+            # println(!"Algo")
+            lower_affine1 += bar_a[i] * getlowerbound(ys[k][names2[i]])
+        end
+    end
+
+    lower_affine2 = 0
+    for i in 1:length(names1)
+        if getlowerbound(x[names1[i]]) !== -Inf && bar_a[length(names2) + i] > 0
+            lower_affine2 += bar_a[length(names2) + i] * getlowerbound(x[names1[i]])
+        end
+    end
+    # println(lower_affine1, " ", lower_affine2)
+    lower_affine = lower_affine1 + lower_affine2
+    
+    @constraint(master, λ1'SCENS[k].h + sum(λ2[i] * x[names1[i]] for i in 1:length(names1)) <= upper_affine + lower_affine)
+
 end
 
 function update_subprob_values(v_xs, numScens, names1, SCENS, is_integer)
@@ -41,9 +93,9 @@ function update_subprob_values(v_xs, numScens, names1, SCENS, is_integer)
     π_hat = []
     if !is_integer
         for k = 1:numScens
-            status = solve(v_xs[k][1])
-            if status == :InfeasibleOrUnbounded
-                return nothing, nothing
+            status = solve(v_xs[k][1], suppress_warnings=true)
+            if status == :InfeasibleOrUnbounded || status == :Infeasible
+                return nothing, k
             end
             π_k = [getdual(v_xs[k][2][i]) for i in 1:length(names1)]
             push!(π_hat, π_k)
@@ -51,8 +103,8 @@ function update_subprob_values(v_xs, numScens, names1, SCENS, is_integer)
         end
     else
         for k = 1:numScens
-            status = solve(v_xs[k][1])
-            if status == :InfeasibleOrUnbounded
+            status = solve(v_xs[k][1], suppress_warnings=true)
+            if status == :InfeasibleOrUnbounded || status == :Infeasible
                 return nothing, nothing
             end
             v_x_hat += SCENS[k].p * v_xs[k][1].objVal

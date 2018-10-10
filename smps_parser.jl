@@ -521,7 +521,7 @@ function create_v_xs(x_hat, SCENS, numScens, BOUNDS, FIRST_STG_COLS, SEC_STG_COL
 end
 
 function create_v_x(x_hat, SCENARIO, BOUNDS, FIRST_STG_COLS, SEC_STG_COLS)
-    v_x = Model(solver=GurobiSolver(OutputFlag=0))
+    v_x = Model(solver=GurobiSolver(OutputFlag=0, InfUnbdInfo=1))
 
     names1 = [var[1] for var in FIRST_STG_COLS]
     @variable(v_x, z[i = names1])
@@ -540,16 +540,18 @@ function create_v_x(x_hat, SCENARIO, BOUNDS, FIRST_STG_COLS, SEC_STG_COLS)
 
     # Tz + Wy ~ h
     # Its duals are λ: not necessary to get reference
+    constr_λ = []
+    # println("size es ", size(SCENARIO.W, 2))
     for r = 1:size(SCENARIO.T, 1)
         if SCENARIO.comps[r] == "E"
-            @constraint(v_x, sum(SCENARIO.T[r, c] * z[names1[c]] for c in 1:size(SCENARIO.T, 2)) + 
-            sum(SCENARIO.W[r, c] * y[names2[c]] for c in 1:size(SCENARIO.W, 2)) == SCENARIO.h[r])
+            push!(constr_λ, @constraint(v_x, sum(SCENARIO.T[r, c] * z[names1[c]] for c in 1:size(SCENARIO.T, 2)) + 
+            sum(SCENARIO.W[r, c] * y[names2[c]] for c in 1:size(SCENARIO.W, 2)) == SCENARIO.h[r]))
         elseif SCENARIO.comps[r] == "G"
-            @constraint(v_x, sum(SCENARIO.T[r, c] * z[names1[c]] for c in 1:size(SCENARIO.T, 2)) + 
-            sum(SCENARIO.W[r, c] * y[names2[c]] for c in 1:size(SCENARIO.W, 2)) >= SCENARIO.h[r])
+            push!(constr_λ, @constraint(v_x, sum(SCENARIO.T[r, c] * z[names1[c]] for c in 1:size(SCENARIO.T, 2)) + 
+            sum(SCENARIO.W[r, c] * y[names2[c]] for c in 1:size(SCENARIO.W, 2)) >= SCENARIO.h[r]))
         else 
-            @constraint(v_x, sum(SCENARIO.T[r, c] * z[names1[c]] for c in 1:size(SCENARIO.T, 2)) + 
-            sum(SCENARIO.W[r, c] * y[names2[c]] for c in 1:size(SCENARIO.W, 2)) <= SCENARIO.h[r])
+            push!(constr_λ, @constraint(v_x, sum(SCENARIO.T[r, c] * z[names1[c]] for c in 1:size(SCENARIO.T, 2)) + 
+            sum(SCENARIO.W[r, c] * y[names2[c]] for c in 1:size(SCENARIO.W, 2)) <= SCENARIO.h[r]))
         end
     end
 
@@ -558,7 +560,7 @@ function create_v_x(x_hat, SCENARIO, BOUNDS, FIRST_STG_COLS, SEC_STG_COLS)
     @constraint(v_x, constr_π[i=1:length(names1)], z[names1[i]] == x_hat[i])
     add_bounds!(v_x, names2, y, BOUNDS, SEC_STG_COLS)
 
-    return [v_x, constr_π], y
+    return [v_x, constr_π, constr_λ], y
 
 end
 

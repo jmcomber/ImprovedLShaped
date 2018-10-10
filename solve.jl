@@ -3,9 +3,9 @@ include("smps_parser.jl")
 include("utils.jl")
 
 
-time = "/Users/jmcomber/Universidad/MISTI/SMPS_Parser/sslp/sslp_15_45_5.tim"
-core = "/Users/jmcomber/Universidad/MISTI/SMPS_Parser/sslp/sslp_15_45_5.cor"
-stoch = "/Users/jmcomber/Universidad/MISTI/SMPS_Parser/sslp/sslp_15_45_5.sto"
+time = "/Users/jmcomber/Universidad/MISTI/SMPS_Parser/sslp/sslp_15_45_10.tim"
+core = "/Users/jmcomber/Universidad/MISTI/SMPS_Parser/sslp/sslp_15_45_10.cor"
+stoch = "/Users/jmcomber/Universidad/MISTI/SMPS_Parser/sslp/sslp_15_45_10.sto"
 
 # Utilidades
 TIME = get_TIME(time)
@@ -99,7 +99,7 @@ names2 = [var[1] for var in SEC_STG_COLS]
 function solve_decomposed(master, improved)
     if improved        
         change_category!(x, FIRST_STG_COLS, true)
-        solve(master)
+        solve(master, suppress_warnings=true)
         x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
 
         # # CREAR v_x con referencia a constraints de las que necesito dual (z = x), para poder obtener duales (getdual(constr))
@@ -155,9 +155,9 @@ function solve_decomposed(master, improved)
             end            
         end
         addlazycallback(master, add_lazy_improved)
-        solve(master)
+        solve(master, suppress_warnings=true)
     else
-        solve(master)
+        solve(master, suppress_warnings=true)
         x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
 
         # # CREAR v_x con referencia a constraints de las que necesito dual (z = x), para poder obtener duales (getdual(constr))
@@ -171,7 +171,7 @@ function solve_decomposed(master, improved)
         # iter_count = 0
         while v_x_hat === nothing || θ_hat < v_x_hat - τ
               
-            solve(master)
+            solve(master, suppress_warnings=true)
             x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
             update_subproblems!(v_xs, x_hat)
 
@@ -180,7 +180,9 @@ function solve_decomposed(master, improved)
             if v_x_hat !== nothing
                 add_cut!(master, SCENS, v_xs, π_hat, x_hat, numScens, x, θ, names1, false)
             else
-                add_feas_cut!(SCENS, v_xs, numScens, ys, names2)
+                println("FEASIBILITY! \n")
+                k = π_hat
+                add_feas_cut!(master, x, names1, SCENS, v_xs, numScens, ys, names2, k)
             end
             
         end
@@ -211,13 +213,13 @@ function solve_decomposed(master, improved)
         end
 
         addlazycallback(master, add_lazy_ilsm)
-        solve(master)
+        solve(master, suppress_warnings=true)
 
     end
 end
 
 
-solve_decomposed(master, true)
+solve_decomposed(master, false)
 
 println("\nOptimal value Master MIP: ", master.objVal)
 
