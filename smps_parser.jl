@@ -243,7 +243,7 @@ function get_first_stg_rows(CORE, STG2_R, object_name)
     return FIRST_STG_ROWS
 end
 
-function get_first_stg_rhs(CORE, FIRST_STG_ROWS)
+function get_first_stg_rhs(CORE, FIRST_STG_ROWS, FIRST_STG_CONSTR)
     FIRST_STG_RHS = Dict()
 
     for row in FIRST_STG_ROWS
@@ -266,7 +266,7 @@ function get_first_stg_rhs(CORE, FIRST_STG_ROWS)
             end
         end 
     end
-    return FIRST_STG_RHS
+    return FIRST_STG_RHS, FIRST_STG_CONSTR
 end
 
 function get_sec_stg_cols(CORE, STG2_C)
@@ -316,7 +316,7 @@ function get_sec_stg_rows(CORE, STG2_R)
     return SEC_STG_ROWS
 end
 
-function get_sec_stg_rhs(CORE, SEC_STG_ROWS)
+function get_sec_stg_rhs(CORE, SEC_STG_ROWS, SEC_STG_CONSTR)
     SEC_STG_RHS = Dict()
     for row in SEC_STG_ROWS
         comp, name = row
@@ -343,10 +343,10 @@ function get_sec_stg_rhs(CORE, SEC_STG_ROWS)
             SEC_STG_RHS[name] = 0.0
         end
     end
-    return SEC_STG_RHS
+    return SEC_STG_RHS, SEC_STG_CONSTR
 end
 
-function create_scenarios(numScens, STOCH, SEC_STG_RHS, SEC_STG_CONSTR, SEC_STG_ROWS, SEC_STG_COLS, FIRST_STG_COLS)
+function create_scenarios(numScens, STOCH, SEC_STG_RHS, SEC_STG_CONSTR, SEC_STG_ROWS, SEC_STG_COLS, FIRST_STG_COLS, AUX2)
     SCENS = []
     for s in 1:numScens
         copy_RHS = copy(SEC_STG_RHS)
@@ -396,9 +396,9 @@ function linking_vars(SEC_STG_ROWS, FIRST_STG_COLS, SEC_STG_CONSTR)
     return LINKING_VARS
 end
 
-function create_Lk(FIRST_STG_COLS, FIRST_STG_ROWS, FIRST_STG_RHS, SEC_STG_COLS, SCENARIO, BOUNDS)
+function create_Lk(master_data, SEC_STG_COLS, SCENARIO, BOUNDS)
     m = Model(solver=GurobiSolver(OutputFlag=0))
-    names1 = [var[1] for var in FIRST_STG_COLS]
+    names1 = [var[1] for var in master_data.cols]
     # Faltan tipos (usar setcategory(x[i], :Int))
     @variable(m, z[i = names1])
     # for (name, var_type) in FIRST_STG_COLS
@@ -421,13 +421,13 @@ function create_Lk(FIRST_STG_COLS, FIRST_STG_ROWS, FIRST_STG_RHS, SEC_STG_COLS, 
     @objective(m, :Min, sum(SCENARIO.q[j] * y[names2[j]] for j in 1:length(names2)))
 
     # agregar constraints Az ~ b
-    for (constr_type, name) in FIRST_STG_ROWS
+    for (constr_type, name) in master_data.rows
         if constr_type == "E"
-            @constraint(m, sum(val * z[var] for (var, val) in FIRST_STG_CONSTR[name]) == FIRST_STG_RHS[name])
+            @constraint(m, sum(val * z[var] for (var, val) in master_data.constrs[name]) == master_data.rhs[name])
         elseif constr_type == "G"
-            @constraint(m, sum(val * z[var] for (var, val) in FIRST_STG_CONSTR[name]) >= FIRST_STG_RHS[name])
+            @constraint(m, sum(val * z[var] for (var, val) in master_data.constrs[name]) >= master_data.rhs[name])
         else
-            @constraint(m, sum(val * z[var] for (var, val) in FIRST_STG_CONSTR[name]) <= FIRST_STG_RHS[name])
+            @constraint(m, sum(val * z[var] for (var, val) in master_data.constrs[name]) <= master_data.rhs[name])
         end
     end
     
@@ -445,17 +445,17 @@ function create_Lk(FIRST_STG_COLS, FIRST_STG_ROWS, FIRST_STG_RHS, SEC_STG_COLS, 
         end
     end
 
-    add_bounds!(m, names1, z, BOUNDS, FIRST_STG_COLS)
+    add_bounds!(m, names1, z, BOUNDS, master_data.cols)
     add_bounds!(m, names2, y, BOUNDS, SEC_STG_COLS)
     
 
     return m
 end
 
-function init_master(FIRST_STG_COLS, FIRST_STG_OBJECT, FIRST_STG_ROWS, FIRST_STG_RHS, solver, BOUNDS, L)
+function init_master(master_data, solver, BOUNDS)
     master = Model(solver=solver())
 
-    names1 = [var[1] for var in FIRST_STG_COLS]
+    names1 = [var[1] for var in master_data.cols]
     @variable(master, x[i = names1])
     # for (name, var_type) in FIRST_STG_COLS
     #     if var_type == "int"
@@ -464,26 +464,23 @@ function init_master(FIRST_STG_COLS, FIRST_STG_OBJECT, FIRST_STG_ROWS, FIRST_STG
     #         setcategory(x[name], :Bin)
     #     end
     # end
-    @variable(master, θ >= L)
+    @variable(master, θ >= master_data.L)
     master.colNames = [names1..., "θ"]
-    @objective(master, :Min, sum(FIRST_STG_OBJECT[name] * x[name] for name in names1) + θ)
+    @objective(master, :Min, sum(master_data.obj[name] * x[name] for name in names1) + θ)
 
     # agregar constraints Ax ~ b
-    for (constr_type, name) in FIRST_STG_ROWS
+    for (constr_type, name) in master_data.rows
         if constr_type == "E"
-            @constraint(master, sum(val * x[var] for (var, val) in FIRST_STG_CONSTR[name]) == FIRST_STG_RHS[name])
+            @constraint(master, sum(val * x[var] for (var, val) in master_data.constrs[name]) == master_data.rhs[name])
         elseif constr_type == "G"
-            @constraint(master, sum(val * x[var] for (var, val) in FIRST_STG_CONSTR[name]) >= FIRST_STG_RHS[name])
+            @constraint(master, sum(val * x[var] for (var, val) in master_data.constrs[name]) >= master_data.rhs[name])
         else
-            @constraint(master, sum(val * x[var] for (var, val) in FIRST_STG_CONSTR[name]) <= FIRST_STG_RHS[name])
+            @constraint(master, sum(val * x[var] for (var, val) in master_data.constrs[name]) <= master_data.rhs[name])
         end
     end
-
-    add_bounds!(master, names1, x, BOUNDS, FIRST_STG_COLS)
-
+    add_bounds!(master, names1, x, BOUNDS, master_data.cols)
     return master, x, θ
 end
-
 
 function add_bounds!(m, names, z, BOUNDS, COLS)
     non_neg = Dict(i[1] => true for i=COLS)
@@ -508,10 +505,10 @@ function add_bounds!(m, names, z, BOUNDS, COLS)
     end
 end
 
-function create_v_xs(x_hat, SCENS, numScens, BOUNDS, FIRST_STG_COLS, SEC_STG_COLS)
+function create_v_xs(x_hat, SCENS, BOUNDS, FIRST_STG_COLS, SEC_STG_COLS)
     v_xs = []
     y_xs = []
-    for i in 1:numScens
+    for i in 1:length(SCENS)
         prob, y = create_v_x(x_hat, SCENS[i], BOUNDS, FIRST_STG_COLS, SEC_STG_COLS)
         push!(v_xs, prob)
         push!(y_xs, y)
