@@ -59,3 +59,61 @@ function solve_improved(master, x, master_data, SCENS, CORE, SEC_STG_COLS, names
     addlazycallback(master, add_lazy_improved)
     solve(master, suppress_warnings=true)
 end
+
+function solve_not_improved(master, x, master_data, SCENS, CORE, SEC_STG_COLS, names1, names2)
+    solve(master, suppress_warnings=true)
+    x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
+
+    # # CREAR v_x con referencia a constraints de las que necesito dual (z = x), para poder obtener duales (getdual(constr))
+    v_xs, ys = create_v_xs(x_hat, SCENS, CORE[4], master_data.cols, SEC_STG_COLS)
+
+    # # v_xs = [[modelo1, constr_pi1], [...], ...]
+    # # pi_hat[k] es valor del pi para problema del escenario k en la actual iteración
+
+    v_x_hat, π_hat = update_subprob_values(v_xs, names1, SCENS, true)
+
+    while v_x_hat === nothing || θ_hat < v_x_hat - τ
+          
+        solve(master, suppress_warnings=true)
+        x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
+        update_subproblems!(v_xs, x_hat)
+
+        v_x_hat, π_hat = update_subprob_values(v_xs, names1, SCENS, false)
+        
+        if v_x_hat !== nothing
+            add_integer_optimality_cut!(master, SCENS, v_xs, π_hat, x_hat, x, θ, names1)
+        else
+            println("FEASIBILITY! \n")
+            add_cont_feas_cut!(master, x, names1, SCENS, v_xs, ys, names2, π_hat)
+        end
+        
+    end
+
+    println("\nOptimal value Master LP: ", master.objVal)
+
+    # Set category for vars
+    change_category!(x, master_data.cols, true)
+    for y in ys
+        change_category!(y, SEC_STG_COLS, true)
+    end
+
+    v_x_hat = 1e7
+
+    println("Now MIP")
+    function add_lazy_ilsm(cb)
+        x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
+        x_hat = [round(i, 0) for i in x_hat]
+        update_subproblems!(v_xs, x_hat)
+        v_x_hat, π_hat = update_subprob_values(v_xs, names1, SCENS, true)
+        if v_x_hat != nothing
+            S = [i for i in 1:length(names1) if x_hat[i] >= 0.9]
+            @lazyconstraint(cb, θ >= (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
+        else
+            S = [i for i in 1:length(names1) if x_hat[i] >= 0.9]
+            @lazyconstraint(cb, 1 <= (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))))     
+        end
+    end
+
+    addlazycallback(master, add_lazy_ilsm)
+    solve(master, suppress_warnings=true)
+end

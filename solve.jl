@@ -44,18 +44,9 @@ println(2)
 SEC_STG_ROWS = get_sec_stg_rows(CORE, STG2_R)
 SEC_STG_CONSTR = Dict(i[2] => Dict() for i in SEC_STG_ROWS)
 SEC_STG_RHS, SEC_STG_CONSTR = get_sec_stg_rhs(CORE, SEC_STG_ROWS, SEC_STG_CONSTR)
-for row in SEC_STG_ROWS
-    for col in FIRST_STG_COLS
-        if !haskey(SEC_STG_CONSTR[row[2]], col[1])
-            SEC_STG_CONSTR[row[2]][col[1]] = 0.0
-        end
-    end
-    for col in SEC_STG_COLS
-        if !haskey(SEC_STG_CONSTR[row[2]], col[1])
-            SEC_STG_CONSTR[row[2]][col[1]] = 0.0
-        end
-    end
-end
+
+insert_absent_elements!(SEC_STG_CONSTR, SEC_STG_ROWS, FIRST_STG_COLS)
+
 println(3)
 SCENS = create_scenarios(numScens, STOCH, SEC_STG_RHS, SEC_STG_CONSTR, SEC_STG_ROWS, SEC_STG_COLS, FIRST_STG_COLS, AUX2)
 non_neg = Dict(i[1] => true for i=FIRST_STG_COLS)
@@ -86,7 +77,7 @@ master_data.L = L
 println("[PREPROCESSING READY, L = ", master_data.L, "]")
 
 
-# Crear Maestro
+# Create Master
 # min c^{T}x + θ
 #       Ax ~ b
 #       x ~ 0 (bounds)
@@ -99,69 +90,11 @@ names2 = [var[1] for var in SEC_STG_COLS]
 τ = 1e-4
 
 
-
 function solve_decomposed(master, improved)
     if improved
         solve_improved(master, x, master_data, SCENS, CORE, SEC_STG_COLS, names1)
     else
-        solve(master, suppress_warnings=true)
-        x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
-
-        # # CREAR v_x con referencia a constraints de las que necesito dual (z = x), para poder obtener duales (getdual(constr))
-        v_xs, ys = create_v_xs(x_hat, SCENS, CORE[4], master_data.cols, SEC_STG_COLS)
-
-        # # v_xs = [[modelo1, constr_pi1], [...], ...]
-        # # pi_hat[k] es valor del pi para problema del escenario k en la actual iteración
-
-        v_x_hat, π_hat = update_subprob_values(v_xs, names1, SCENS, true)
-
-        # iter_count = 0
-        while v_x_hat === nothing || θ_hat < v_x_hat - τ
-              
-            solve(master, suppress_warnings=true)
-            x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
-            update_subproblems!(v_xs, x_hat)
-
-            v_x_hat, π_hat = update_subprob_values(v_xs, names1, SCENS, false)
-            
-            if v_x_hat !== nothing
-                add_cut!(master, SCENS, v_xs, π_hat, x_hat, x, θ, names1, false)
-            else
-                println("FEASIBILITY! \n")
-                k = π_hat
-                add_feas_cut!(master, x, names1, SCENS, v_xs, ys, names2, k)
-            end
-            
-        end
-
-        println("\nOptimal value Master LP: ", master.objVal)
-
-        # Set category for vars
-        change_category!(x, master_data.cols, true)
-        for y in ys
-            change_category!(y, SEC_STG_COLS, true)
-        end
-
-        v_x_hat = 1e7
-
-        println("Now MIP")
-        function add_lazy_ilsm(cb)
-            x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
-            x_hat = [round(i, 0) for i in x_hat]
-            update_subproblems!(v_xs, x_hat)
-            v_x_hat, π_hat = update_subprob_values(v_xs, names1, SCENS, true)
-            if v_x_hat != nothing
-                S = [i for i in 1:length(names1) if x_hat[i] >= 0.9]
-                @lazyconstraint(cb, θ >= (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
-            else
-                S = [i for i in 1:length(names1) if x_hat[i] >= 0.9]
-                @lazyconstraint(cb, 1 <= (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))))     
-            end
-        end
-
-        addlazycallback(master, add_lazy_ilsm)
-        solve(master, suppress_warnings=true)
-
+        solve_not_improved(master, x, master_data, SCENS, CORE, SEC_STG_COLS, names1, names2)
     end
 end
 
@@ -175,8 +108,6 @@ for i in 1:master.numCols
         println(master.colNames[i], ": ", master.colVal[i])
     end
 end
-
-
 
 
 

@@ -30,18 +30,10 @@ function not_suited(linking_vars, first_cols)
 end
 
 
-function add_cut!(master, SCENS, v_xs, π_hat, x_hat, x, θ, names1, is_integer)
-    
-    if !is_integer
-        β = sum(SCENS[k].p * (v_xs[k][1].objVal - π_hat[k]'x_hat) for k in 1:length(SCENS))
-        α = sum(SCENS[k].p * π_hat[k] for k in 1:length(SCENS))
-        @constraint(master, θ >= sum(α[i] * x[names1[i]] for i in 1:length(names1)) + β)
-    # else
-    #     # Integer L-Shaped
-    #     # theta >= (L - v(x'))[SUM_{i en S(x')}(1 - x_i) + SUM_{i no en S(x')}(x_{i})] + v(x')
-    #     S = [i for i in 1:length(names1) if x_hat[i] >= 0.9]
-    #     @constraint(master, θ >= (L - v_x_hat) * (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))) + v_x_hat)
-    end
+function add_integer_optimality_cut!(master, SCENS, v_xs, π_hat, x_hat, x, θ, names1)
+    β = sum(SCENS[k].p * (v_xs[k][1].objVal - π_hat[k]'x_hat) for k in 1:length(SCENS))
+    α = sum(SCENS[k].p * π_hat[k] for k in 1:length(SCENS))
+    @constraint(master, θ >= sum(α[i] * x[names1[i]] for i in 1:length(names1)) + β)
 end
 
 function get_duals_constr(v_xs, numScens, k)
@@ -50,7 +42,7 @@ function get_duals_constr(v_xs, numScens, k)
     λ1, λ2
 end
 
-function add_feas_cut!(master, x, names1, SCENS, v_xs, ys, names2, k)
+function add_cont_feas_cut!(master, x, names1, SCENS, v_xs, ys, names2, k)
     # v_xs[i][3] tiene los constr_λ de ese problema, y v_xs[i][2] los constr_π.
     # primero conseguir valores duales, después multiplicarlo por las matrices, y armar la restricción
     # conseguir duales
@@ -72,7 +64,6 @@ function add_feas_cut!(master, x, names1, SCENS, v_xs, ys, names2, k)
     upper_affine1 = 0
     for i in 1:length(names2)
         if getupperbound(ys[k][names2[i]]) !== Inf && bar_a[i] < 0
-            println(!"Algo")
             upper_affine1 += bar_a[i] * getupperbound(ys[k][names2[i]])
         end
     end
@@ -83,13 +74,11 @@ function add_feas_cut!(master, x, names1, SCENS, v_xs, ys, names2, k)
             upper_affine2 += bar_a[length(names2) + i] * getupperbound(x[names1[i]])
         end
     end
-    # println(upper_affine1, " ", upper_affine2)
     upper_affine = upper_affine1 + upper_affine2
     
     lower_affine1 = 0
     for i in 1:length(names2)
         if getlowerbound(ys[k][names2[i]]) !== -Inf && bar_a[i] > 0
-            # println(!"Algo")
             lower_affine1 += bar_a[i] * getlowerbound(ys[k][names2[i]])
         end
     end
@@ -100,10 +89,9 @@ function add_feas_cut!(master, x, names1, SCENS, v_xs, ys, names2, k)
             lower_affine2 += bar_a[length(names2) + i] * getlowerbound(x[names1[i]])
         end
     end
-    # println(lower_affine1, " ", lower_affine2)
     lower_affine = lower_affine1 + lower_affine2
     
-    println(@constraint(master, λ1'SCENS[k].h + sum(λ2[i] * x[names1[i]] for i in 1:length(names1)) <= upper_affine + lower_affine))
+    @constraint(master, λ1'SCENS[k].h + sum(λ2[i] * x[names1[i]] for i in 1:length(names1)) <= upper_affine + lower_affine)
 
 end
 

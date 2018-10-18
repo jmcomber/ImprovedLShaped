@@ -588,3 +588,19 @@ function binarize_first_stg_cols(FIRST_STG_COLS, BOUNDS)
     return FIRST_STG_COLS
 end
 
+
+function insert_absent_elements!(SEC_STG_CONSTR, SEC_STG_ROWS, FIRST_STG_COLS)
+    for row in SEC_STG_ROWS
+        for col in FIRST_STG_COLS
+            if !haskey(SEC_STG_CONSTR[row[2]], col[1])
+                SEC_STG_CONSTR[row[2]][col[1]] = 0.0
+            end
+        end
+        for col in SEC_STG_COLS
+            if !haskey(SEC_STG_CONSTR[row[2]], col[1])
+                SEC_STG_CONSTR[row[2]][col[1]] = 0.0
+            end
+        end
+    end
+    nothing
+end
