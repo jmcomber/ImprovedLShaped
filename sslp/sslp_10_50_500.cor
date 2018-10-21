@@ -1073,17 +1073,6 @@ COLUMNS
     y_50_9    c61                  1
     y_50_10   obj                -10   c11                -10
     y_50_10   c61                  1
-    MARK0001  'MARKER'                 'INTEND'
-    x_1_0     obj               1000   c2                   1
-    x_2_0     obj               1000   c3                   1
-    x_3_0     obj               1000   c4                   1
-    x_4_0     obj               1000   c5                   1
-    x_5_0     obj               1000   c6                   1
-    x_6_0     obj               1000   c7                   1
-    x_7_0     obj               1000   c8                   1
-    x_8_0     obj               1000   c9                   1
-    x_9_0     obj               1000   c10                  1
-    x_10_0    obj               1000   c11                  1
 RHS
     rhs       c1                 -10   c12                  1
     rhs       c13                  1   c14                  1

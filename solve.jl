@@ -4,9 +4,9 @@ include("utils.jl")
 include("solve_functions.jl")
 
 
-time = "/Users/jmcomber/Universidad/MISTI/SMPS_Parser/sslp/sslp_15_45_5.tim"
-core = "/Users/jmcomber/Universidad/MISTI/SMPS_Parser/sslp/sslp_15_45_5.cor"
-stoch = "/Users/jmcomber/Universidad/MISTI/SMPS_Parser/sslp/sslp_15_45_5.sto"
+time = "/Users/jmcomber/Universidad/MISTI/SMPS_Parser/sslp/sslp_10_50_50.tim"
+core = "/Users/jmcomber/Universidad/MISTI/SMPS_Parser/sslp/sslp_10_50_50.cor"
+stoch = "/Users/jmcomber/Universidad/MISTI/SMPS_Parser/sslp/sslp_10_50_50.sto"
 
 # Utilidades
 
@@ -99,7 +99,7 @@ function solve_decomposed(master, improved)
 end
 
 
-solve_decomposed(master, false)
+solve_decomposed(master, true)
 
 println("\nOptimal value Master MIP: ", master.objVal)
 

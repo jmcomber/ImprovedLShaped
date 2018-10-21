@@ -30,7 +30,7 @@ function not_suited(linking_vars, first_cols)
 end
 
 
-function add_integer_optimality_cut!(master, SCENS, v_xs, π_hat, x_hat, x, θ, names1)
+function add_cont_optimality_cut!(master, SCENS, v_xs, π_hat, x_hat, x, θ, names1)
     β = sum(SCENS[k].p * (v_xs[k][1].objVal - π_hat[k]'x_hat) for k in 1:length(SCENS))
     α = sum(SCENS[k].p * π_hat[k] for k in 1:length(SCENS))
     @constraint(master, θ >= sum(α[i] * x[names1[i]] for i in 1:length(names1)) + β)
@@ -91,7 +91,7 @@ function add_cont_feas_cut!(master, x, names1, SCENS, v_xs, ys, names2, k)
     end
     lower_affine = lower_affine1 + lower_affine2
     
-    @constraint(master, λ1'SCENS[k].h + sum(λ2[i] * x[names1[i]] for i in 1:length(names1)) <= upper_affine + lower_affine)
+    @constraint(master, λ1'SCENS[k].h + sum(λ2[i] * x[names1[i]] for i in 1:length(names1)) <= 0)
 
 end
 
