@@ -557,14 +557,16 @@ function create_v_x(x_hat, SCENARIO, BOUNDS, FIRST_STG_COLS, SEC_STG_COLS)
     @constraint(v_x, constr_π[i=1:length(names1)], z[names1[i]] == x_hat[i])
     add_bounds!(v_x, names2, y, BOUNDS, SEC_STG_COLS)
 
-    return [v_x, constr_π, constr_λ], y
+    v_x = Subproblem(v_x, constr_π, constr_λ)
+    
+    return v_x, y
 
 end
 
 
 function update_subproblems!(v_xs, x_hat)
     for k in 1:length(v_xs)
-        update_subproblem!(v_xs[k][1], x_hat, v_xs[k][2])
+        update_subproblem!(v_xs[k].model, x_hat, v_xs[k].constr_π)
     end
 end
 

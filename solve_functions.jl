@@ -27,7 +27,7 @@ function solve_improved(master, x, master_data, SCENS, CORE, SEC_STG_COLS, names
             push!(V, x_hat)
         
             if θ_hat < v_x_hat - τ
-                β = sum(SCENS[k].p * (v_xs[k][1].objVal - π_hat[k]'x_hat) for k in 1:length(SCENS))
+                β = sum(SCENS[k].p * (v_xs[k].model.objVal - π_hat[k]'x_hat) for k in 1:length(SCENS))
                 α = sum(SCENS[k].p * π_hat[k] for k in 1:length(SCENS))
                 opt_cont += 1
                 @lazyconstraint(cb, θ >= sum(α[i] * x[names1[i]] for i in 1:length(names1)) + β)
