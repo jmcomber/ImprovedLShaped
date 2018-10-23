@@ -42,14 +42,14 @@ function add_cont_optimality_cut!(master, SCENS, v_xs, π_hat, x_hat, x, θ, nam
     @constraint(master, θ >= sum(α[i] * x[names1[i]] for i in 1:length(names1)) + β)
 end
 
-function get_duals_constr(v_xs, numScens, k)
-    λ1 = getdual(v_xs[k].constr_λ)    # Tz + Wy ~ h
-    λ2 = getdual(v_xs[k].constr_π)    # z = x
+function get_duals_constr(v_x)
+    λ1 = getdual(v_x.constr_λ)    # Tz + Wy ~ h
+    λ2 = getdual(v_x.constr_π)    # z = x
     λ1, λ2
 end
 
-function add_cont_feas_cut!(master, x, names1, scen, v_xs)
-    λ1, λ2 = get_duals_constr(v_xs, length(SCENS), k)
+function add_cont_feas_cut!(master, x, names1, scen, v_x)
+    λ1, λ2 = get_duals_constr(v_x)
     @constraint(master, λ1'scen.h + sum(λ2[i] * x[names1[i]] for i in 1:length(names1)) <= 0)
 end
 

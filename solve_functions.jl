@@ -56,7 +56,7 @@ function solve_improved(master, x, master_data, SCENS, CORE, SEC_STG_COLS, names
             println("Feasibility")
             S = [i for i in 1:length(names1) if x_hat[i] >= 0.9]
             # CREO QUE ESTA DEBERÍA SER BENDERS, NO INTEGER
-            λ1, λ2 = get_duals_constr(v_xs, length(SCENS), π_hat)
+            λ1, λ2 = get_duals_constr(v_xs[π_hat])
             feas_cont += 1
             @lazyconstraint(cb, λ1'SCENS[π_hat].h + sum(λ2[i] * x[names1[i]] for i in 1:length(names1)) <= 0)
             # @lazyconstraint(cb, 1 <= (sum(1 - x[names1[i]] for i in S) + sum(x[names1[i]] for i in 1:length(names1) if !(i in S))))
@@ -91,7 +91,7 @@ function solve_not_improved(master, x, master_data, SCENS, CORE, SEC_STG_COLS, n
             add_cont_optimality_cut!(master, SCENS, v_xs, π_hat, x_hat, x, θ, names1)
         else
             println("FEASIBILITY! \n")
-            add_cont_feas_cut!(master, x, names1, SCENS[π_hat], v_xs)
+            add_cont_feas_cut!(master, x, names1, SCENS[π_hat], v_xs[π_hat])
         end
         
     end
