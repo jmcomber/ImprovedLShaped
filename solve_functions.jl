@@ -91,7 +91,7 @@ function solve_not_improved(master, x, master_data, SCENS, CORE, SEC_STG_COLS, n
             add_cont_optimality_cut!(master, SCENS, v_xs, π_hat, x_hat, x, θ, names1)
         else
             println("FEASIBILITY! \n")
-            add_cont_feas_cut!(master, x, names1, SCENS, v_xs, ys, names2, π_hat)
+            add_cont_feas_cut!(master, x, names1, SCENS[π_hat], v_xs)
         end
         
     end

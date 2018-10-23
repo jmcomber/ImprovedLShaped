@@ -48,9 +48,9 @@ function get_duals_constr(v_xs, numScens, k)
     λ1, λ2
 end
 
-function add_cont_feas_cut!(master, x, names1, SCENS, v_xs, ys, names2, k)
+function add_cont_feas_cut!(master, x, names1, scen, v_xs)
     λ1, λ2 = get_duals_constr(v_xs, length(SCENS), k)
-    @constraint(master, λ1'SCENS[k].h + sum(λ2[i] * x[names1[i]] for i in 1:length(names1)) <= 0)
+    @constraint(master, λ1'scen.h + sum(λ2[i] * x[names1[i]] for i in 1:length(names1)) <= 0)
 end
 
 function update_subprob_values(v_xs, names1, SCENS, is_integer)
