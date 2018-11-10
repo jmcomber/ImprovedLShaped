@@ -396,8 +396,12 @@ function linking_vars(SEC_STG_ROWS, FIRST_STG_COLS, SEC_STG_CONSTR)
     return LINKING_VARS
 end
 
-function create_Lk(master_data, SEC_STG_COLS, SCENARIO, BOUNDS)
-    m = Model(solver=GurobiSolver(OutputFlag=0))
+function create_Lk(master_data, SEC_STG_COLS, SCENARIO, BOUNDS, multi_thread)
+    if multi_thread
+        m = Model(solver=GurobiSolver(OutputFlag=0))
+    else
+        m = Model(solver=GurobiSolver(OutputFlag=0, Threads=1))
+    end
     names1 = [var[1] for var in master_data.cols]
     # Faltan tipos (usar setcategory(x[i], :Int))
     @variable(m, z[i = names1])
@@ -452,8 +456,12 @@ function create_Lk(master_data, SEC_STG_COLS, SCENARIO, BOUNDS)
     return m
 end
 
-function init_master(master_data, solver, BOUNDS)
-    master = Model(solver=solver())
+function init_master(master_data, solver, BOUNDS, multi_thread)
+    if multi_thread
+        master = Model(solver=solver())
+    else
+        master = Model(solver=solver(Threads=1))
+    end
 
     names1 = [var[1] for var in master_data.cols]
     @variable(master, x[i = names1])
@@ -505,11 +513,11 @@ function add_bounds!(m, names, z, BOUNDS, COLS)
     end
 end
 
-function create_v_xs(x_hat, SCENS, BOUNDS, FIRST_STG_COLS, SEC_STG_COLS)
+function create_v_xs(x_hat, SCENS, BOUNDS, FIRST_STG_COLS, SEC_STG_COLS, multi_thread)
     v_xs = []
     y_xs = []
     for i in 1:length(SCENS)
-        prob, y = create_v_x(x_hat, SCENS[i], BOUNDS, FIRST_STG_COLS, SEC_STG_COLS)
+        prob, y = create_v_x(x_hat, SCENS[i], BOUNDS, FIRST_STG_COLS, SEC_STG_COLS, multi_thread)
         push!(v_xs, prob)
         push!(y_xs, y)
     end
@@ -517,8 +525,12 @@ function create_v_xs(x_hat, SCENS, BOUNDS, FIRST_STG_COLS, SEC_STG_COLS)
     return v_xs, y_xs
 end
 
-function create_v_x(x_hat, SCENARIO, BOUNDS, FIRST_STG_COLS, SEC_STG_COLS)
-    v_x = Model(solver=GurobiSolver(OutputFlag=0, InfUnbdInfo=1))
+function create_v_x(x_hat, SCENARIO, BOUNDS, FIRST_STG_COLS, SEC_STG_COLS, multi_thread)
+    if multi_thread
+        v_x = Model(solver=GurobiSolver(OutputFlag=0, InfUnbdInfo=1))
+    else
+        v_x = Model(solver=GurobiSolver(OutputFlag=0, InfUnbdInfo=1, Threads=1))
+    end
 
     names1 = [var[1] for var in FIRST_STG_COLS]
     @variable(v_x, z[i = names1])

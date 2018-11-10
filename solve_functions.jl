@@ -1,9 +1,13 @@
-function solve_improved(master, x, master_data, SCENS, CORE, SEC_STG_COLS, names1)
-    solve(master, suppress_warnings=true)
+function solve_improved(master, x, master_data, SCENS, CORE, SEC_STG_COLS, names1, multi_thread)
+    if multi_thread
+        solve(master, suppress_warnings=true)
+    else
+        solve(master, suppress_warnings=true)
+    end
     x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
 
     # # CREAR v_x con referencia a constraints de las que necesito dual (z = x), para poder obtener duales (getdual(constr))
-    v_xs, ys = create_v_xs(x_hat, SCENS, CORE[4], master_data.cols, SEC_STG_COLS)
+    v_xs, ys = create_v_xs(x_hat, SCENS, CORE[4], master_data.cols, SEC_STG_COLS, multi_thread)
 
     # # v_xs = [[modelo1, constr_pi1], [...], ...]
     # # pi_hat[k] es valor del pi para problema del escenario k en la actual iteración
@@ -36,7 +40,7 @@ function solve_improved(master, x, master_data, SCENS, CORE, SEC_STG_COLS, names
     x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
 
     # # CREAR v_x con referencia a constraints de las que necesito dual (z = x), para poder obtener duales (getdual(constr))
-    v_xs, ys = create_v_xs(x_hat, SCENS, CORE[4], master_data.cols, SEC_STG_COLS)
+    v_xs, ys = create_v_xs(x_hat, SCENS, CORE[4], master_data.cols, SEC_STG_COLS, multi_thread)
 
     for y in ys
         change_category!(y, SEC_STG_COLS, true)
@@ -99,12 +103,12 @@ function solve_improved(master, x, master_data, SCENS, CORE, SEC_STG_COLS, names
     println("Continuous Feasibility: $feas_cont\nInteger Feasibility: $feas_int\nContinuous Optimality: $opt_cont\nInteger Optimality: $opt_int")
 end
 
-function solve_not_improved(master, x, master_data, SCENS, CORE, SEC_STG_COLS, names1, names2)
+function solve_not_improved(master, x, master_data, SCENS, CORE, SEC_STG_COLS, names1, names2, multi_thread)
     solve(master, suppress_warnings=true)
     x_hat, θ_hat = master.colVal[1:end-1], master.colVal[end]
 
     # # CREAR v_x con referencia a constraints de las que necesito dual (z = x), para poder obtener duales (getdual(constr))
-    v_xs, ys = create_v_xs(x_hat, SCENS, CORE[4], master_data.cols, SEC_STG_COLS)
+    v_xs, ys = create_v_xs(x_hat, SCENS, CORE[4], master_data.cols, SEC_STG_COLS, multi_thread)
 
     # # v_xs = [[modelo1, constr_pi1], [...], ...]
     # # pi_hat[k] es valor del pi para problema del escenario k en la actual iteración
