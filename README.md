@@ -1,2 +1,3 @@
-# SMPS_Parser.jl
-A parser for the SMPS format written entirely on Julia [WORK IN PROGRESS]
+# ImprovedLShaped
+
+OK, this needs documentation. Sometime soon, hopefully
